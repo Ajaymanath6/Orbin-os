@@ -2,13 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
-  const isProd = mode === 'production'
-  // Set your repository name here when deploying under username.github.io/<repo>
-  const repoBase = '/shopos/'
+// For Vercel deployment, the app is served from the root (/),
+// so we keep base as '/' in all modes. The previous GitHub Pages
+// base of '/shopos/' would cause 404s for assets on Vercel.
+export default defineConfig(() => {
   return {
     plugins: [react()],
-    base: isProd ? repoBase : '/',
+    base: '/',
     build: { outDir: 'dist', assetsDir: 'assets' },
     assetsInclude: ['**/*.svg', '**/*.woff2', '**/*.woff', '**/*.ttf'],
     server: {
