@@ -24,13 +24,9 @@ import {
   RiImageLine,
   RiBarChartLine,
   RiToolsLine,
-  RiTruckLine,
-  RiArrowGoBackLine,
-  RiPlantLine,
   RiPlaneLine,
   RiLockLine,
   RiExternalLinkLine,
-  RiEyeLine,
   RiBankCardLine,
   RiHotelLine
 } from '@remixicon/react'
@@ -1313,9 +1309,7 @@ export default function CanvasLanding() {
   const [isAskingVacationQuestions, setIsAskingVacationQuestions] = useState(false)
   const [showAuthorizationModal, setShowAuthorizationModal] = useState(false)
   const [selectedPackage, setSelectedPackage] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
-  const [missingElementsCreated, setMissingElementsCreated] = useState(false)
   const [showPaymentGateway, setShowPaymentGateway] = useState(false)
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
   const [showPackagePreview, setShowPackagePreview] = useState(false)
   const [vacationSubtasks, setVacationSubtasks] = useState<Array<{id: string, title: string, status: 'pending' | 'in-progress' | 'completed', agent?: string, details?: any}>>([
     { id: '1', title: 'Find flights', status: 'pending' },
@@ -1335,14 +1329,6 @@ export default function CanvasLanding() {
       // ignore persistence errors
     }
   }, [])
-
-
-
-  const TEMPLATES: Array<{ id: string; title: string; subtitle: string; icon: TaskCard['icon']; iconBg: string }> = [
-    { id: 'store-health-template', title: 'Store Health Check', subtitle: 'Connect your Shopify store for an instant AI diagnostic and optimization recommendations', icon: RiPulseLine, iconBg: '#F3F4F6' },
-    { id: 'plan-vacation', title: 'Plan My Vacation', subtitle: 'Plan a 7-day trip to Japan: find flights, book hotels, create an itinerary, reserve restaurants, and get travel insurance', icon: RiPlaneLine, iconBg: '#F3F4F6' }
-  ]
-
   const handleCreateTask = () => {
     if (!newTaskName.trim()) return
     

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
-import { RiTruckLine, RiArrowGoBackLine, RiPlantLine } from '@remixicon/react'
 import Card from '../components/Card'
 import BeforeAfterSlider from '../components/BeforeAfterSlider'
 import Button from '../components/Button'

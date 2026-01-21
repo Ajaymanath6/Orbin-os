@@ -95,18 +95,6 @@ export default function PlanVacationPage({
     }
   }, [subtasks, onSubtaskUpdate])
 
-  const handleStartPlanning = () => {
-    // Simulate agents starting work
-    setSubtasks(prev => prev.map((task, index) => {
-      setTimeout(() => {
-        setSubtasks(current => current.map((t, i) => 
-          i === index ? { ...t, status: 'in-progress' as const, agent: `Agent ${index + 1}` } : t
-        ))
-      }, index * 1000)
-      return task
-    }))
-  }
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -118,14 +106,9 @@ export default function PlanVacationPage({
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-50 border-green-200'
-      case 'in-progress':
-        return 'bg-blue-50 border-blue-200'
-      default:
-        return 'bg-gray-50 border-gray-200'
+  const handleCardClick = (subtask: Subtask) => {
+    if (onCardClick) {
+      onCardClick(subtask)
     }
   }
 
