@@ -153,8 +153,8 @@ export default function SecureAuthorizationModal({
           </div>
 
           {/* Security note */}
-          <div className="flex items-start gap-2 px-1">
-            <RiLockLine size={16} className="text-gray-600 mt-0.5" />
+          <div className="flex items-start gap-2 rounded-lg bg-gray-100 px-3 py-2.5">
+            <RiLockLine size={16} className="text-gray-700 mt-0.5" />
             <p className="text-[11px] text-gray-900">
               Your full card details never touch Orbin. Authorization is completed via PCI‑compliant payment providers.
             </p>

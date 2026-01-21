@@ -240,7 +240,6 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       })
       
       // Step 3: Wait for user confirmation instead of immediately showing modal
-      setWaitingForAuthorization(true)
       setPendingPackageData(packageData)
     }, 2000)
   }, [questionAnswers, addTypingMessage])
@@ -350,7 +349,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     const confirmationKeywords = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'proceed', 'authorize', 'go ahead', 'continue']
     const isConfirmation = confirmationKeywords.some(keyword => answerText === keyword || answerText.startsWith(keyword + ' '))
     
-    if (isConfirmation && pendingPackageData && !currentQuestion) {
+    if (isConfirmation && pendingPackageData) {
       // User confirmed - show authorization modal (can be triggered multiple times, even after closing)
       addTypingMessage({
         type: 'result',
@@ -3676,15 +3675,12 @@ export default function CanvasLanding() {
           setShowAuthorizationModal(false)
         }}
         onOpenInNewTab={() => {
-          // Open payment page in new browser tab
-          if (selectedPackage) {
-            const paymentUrl = `/payment?package=${encodeURIComponent(JSON.stringify(selectedPackage))}`
-            window.open(paymentUrl, '_blank')
-          }
+          // Open package details page in a new browser tab
+          window.open('/package-details', '_blank')
         }}
         onShowPackagePreview={() => {
-          // Show package details in browser preview on right side
-          setShowPackagePreview(true)
+          // Fallback: open in same tab if needed
+          window.location.href = '/package-details'
         }}
         onCancel={() => {
           setShowAuthorizationModal(false)

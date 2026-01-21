@@ -8,6 +8,7 @@ import FixPreviewPage from './pages/FixPreviewPage'
 import ConfirmationPage from './pages/ConfirmationPage'
 import PlanVacationPage from './pages/PlanVacationPage'
 import PaymentPage from './pages/PaymentPage'
+import PackageDetailsPage from './pages/PackageDetailsPage'
 
 function App() {
 
@@ -52,6 +53,7 @@ function App() {
         } />
         <Route path="/plan-vacation" element={<PlanVacationPage />} />
         <Route path="/payment" element={<PaymentPage />} />
+        <Route path="/package-details" element={<PackageDetailsPage />} />
       </Routes>
     </>
   )
