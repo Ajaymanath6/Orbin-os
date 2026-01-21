@@ -246,6 +246,101 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     }, 2000)
   }, [questionAnswers, addTypingMessage])
 
+  const validateAnswer = (
+    questionKey: string | null,
+    answer: string
+  ): { valid: boolean; error?: string } => {
+    if (!questionKey) return { valid: true }
+
+    const trimmed = answer.trim()
+
+    switch (questionKey) {
+      case 'destination': {
+        // Require at least one letter and length >= 2
+        if (trimmed.length < 2 || !/[a-zA-Z]/.test(trimmed)) {
+          return {
+            valid: false,
+            error:
+              "Please enter a destination name (e.g., 'Bali' or 'Paris'), not just numbers."
+          }
+        }
+        return { valid: true }
+      }
+      case 'dates': {
+        // We already have the date picker, but if user types manually,
+        // require something that looks like a range.
+        const hasRange = /\d{4}-\d{2}-\d{2}.*\d{4}-\d{2}-\d{2}/.test(trimmed)
+        if (!hasRange) {
+          return {
+            valid: false,
+            error:
+              "Please enter a date range like '2026-01-17 - 2026-01-22' or use the date picker above."
+          }
+        }
+        return { valid: true }
+      }
+      case 'duration': {
+        const n = parseInt(trimmed, 10)
+        if (Number.isNaN(n) || n <= 0) {
+          return {
+            valid: false,
+            error: 'Duration should be a positive number of days (e.g., 5).'
+          }
+        }
+        if (n > 60) {
+          return {
+            valid: false,
+            error: "That's a very long trip. Please enter a number of days under 60."
+          }
+        }
+        return { valid: true }
+      }
+      case 'budget': {
+        // Strip non-digits and check there's at least something
+        const digits = trimmed.replace(/[^\d]/g, '')
+        const n = parseInt(digits, 10)
+        if (!digits || Number.isNaN(n) || n <= 0) {
+          return {
+            valid: false,
+            error:
+              "Budget should be a number like '$2000' or '5000'."
+          }
+        }
+        return { valid: true }
+      }
+      case 'people': {
+        const n = parseInt(trimmed, 10)
+        if (Number.isNaN(n) || n <= 0) {
+          return {
+            valid: false,
+            error: 'Please enter how many people are traveling (e.g., 1, 2, 4).'
+          }
+        }
+        if (n > 20) {
+          return {
+            valid: false,
+            error:
+              "For now I can only plan trips for up to 20 people. Please enter a smaller number."
+          }
+        }
+        return { valid: true }
+      }
+      case 'tripType': {
+        // Expect words like family, honeymoon, solo
+        if (!/[a-zA-Z]/.test(trimmed)) {
+          return {
+            valid: false,
+            error:
+              "Please describe the trip type in words (e.g., 'family', 'honeymoon', 'solo')."
+          }
+        }
+        return { valid: true }
+      }
+      default:
+        return { valid: true }
+    }
+  }
+
   const handleUserAnswer = useCallback(() => {
     if (!userInput.trim()) return
 
@@ -302,6 +397,18 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     
     if (!currentQuestion) return
 
+    // Basic validation for typed answers per question
+    const validation = validateAnswer(currentQuestion, userInputText)
+    if (!validation.valid) {
+      addTypingMessage({
+        type: 'result',
+        content: validation.error || 'Please adjust your answer and try again.',
+        icon: RiAlertLine
+      })
+      setUserInput('')
+      return
+    }
+
     const answer = userInputText
     
     // Check for duplicate before adding
@@ -329,8 +436,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       return [...prev, userMessage]
     })
 
-    const updatedAnswers = { ...questionAnswers, [currentQuestion]: answer }
-    setQuestionAnswers(updatedAnswers)
+    let updatedAnswers = { ...questionAnswers, [currentQuestion]: answer }
     setUserInput('')
 
     // Handle based on current question
@@ -347,17 +453,42 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }, 3000)
       }, 500)
     } else if (currentQuestion === 'dates') {
-      // Ask next question: duration
-      setTimeout(() => {
-        addTypingMessage({
-          type: 'result',
-          content: `Perfect! Traveling on ${answer}. How many days are you planning for this trip?`,
-          icon: RiPlaneLine
-        })
+      // Try to parse a date range and auto-calculate duration
+      const rangeMatch = answer.match(/(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/)
+      if (rangeMatch) {
+        const start = new Date(rangeMatch[1])
+        const end = new Date(rangeMatch[2])
+        const diffMs = end.getTime() - start.getTime()
+        const diffDays = diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1 : 1
+        const durationStr = String(diffDays)
+        updatedAnswers = { ...updatedAnswers, duration: durationStr }
+        setQuestionAnswers(updatedAnswers)
+
+        // Skip asking for duration explicitly; go straight to budget
         setTimeout(() => {
-          setCurrentQuestion('duration')
-        }, 3000)
-      }, 500)
+          addTypingMessage({
+            type: 'result',
+            content: `Perfect! Traveling on ${answer} – that's a ${diffDays}-day trip. What's your budget for this trip? (e.g., $2000, $5000, $10000)`,
+            icon: RiPlaneLine
+          })
+          setTimeout(() => {
+            setCurrentQuestion('budget')
+          }, 3000)
+        }, 500)
+      } else {
+        // Fallback to original behavior if we can't parse the range
+        setQuestionAnswers(updatedAnswers)
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'result',
+            content: `Perfect! Traveling on ${answer}. How many days are you planning for this trip?`,
+            icon: RiPlaneLine
+          })
+          setTimeout(() => {
+            setCurrentQuestion('duration')
+          }, 3000)
+        }, 500)
+      }
     } else if (currentQuestion === 'duration') {
       // Ask next question: budget
       setTimeout(() => {
@@ -1102,7 +1233,8 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               </div>
             </div>
           ) : (
-            messages.map((message) => {
+            <>
+            {messages.map((message) => {
               // Use icon from message if provided, otherwise determine based on content and type
               let IconComponent = message.icon || RiSparklingFill
               const iconStyle = { color: '#374151' } // Dark gray
@@ -1167,7 +1299,47 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
                   </div>
                 </div>
               )
-            })
+            })}
+
+            {/* Inline date picker helper directly under the question message */}
+            {currentQuestion === 'dates' && (
+              <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700">
+                <div className="mb-1 font-medium text-gray-800">
+                  Select your travel dates
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-300 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  />
+                  <span className="text-[11px] text-gray-500">to</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-300 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  />
+                  <button
+                    type="button"
+                    disabled={!dateFrom || !dateTo}
+                    onClick={() => {
+                      if (!dateFrom || !dateTo) return
+                      const formatted = `${dateFrom} - ${dateTo}`
+                      setUserInput(formatted)
+                      setDateFrom('')
+                      setDateTo('')
+                      handleUserAnswer()
+                    }}
+                    className="px-3 py-1.5 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-medium transition-colors"
+                  >
+                    Use these dates
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
           )}
           
           {/* Packages Display - Show as part of chat messages */}
@@ -1237,43 +1409,6 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           )}
         </div>
       </div>
-
-      {/* Date picker helper when asking for dates */}
-      {currentQuestion === 'dates' && (
-        <div className="px-4 pt-2 pb-1 border-t bg-white" style={{ borderColor: '#E5E7EB' }}>
-          <div className="mb-2 text-xs text-gray-600 font-medium">Select your travel dates</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
-            />
-            <span className="text-xs text-gray-500">to</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
-            />
-            <button
-              type="button"
-              disabled={!dateFrom || !dateTo}
-              onClick={() => {
-                if (!dateFrom || !dateTo) return
-                const formatted = `${dateFrom} - ${dateTo}`
-                setUserInput(formatted)
-                setDateFrom('')
-                setDateTo('')
-                handleUserAnswer()
-              }}
-              className="px-3 py-1.5 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium transition-colors"
-            >
-              Use these dates
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Input Field - Always visible */}
       <div className="p-4 border-t bg-white" style={{ borderColor: '#E5E7EB' }}>
