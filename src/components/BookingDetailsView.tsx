@@ -1,4 +1,4 @@
-import { RiPlaneLine, RiHotelLine, RiCalendarLine, RiRestaurantLine, RiShieldCheckLine, RiCheckLine, RiCloseLine, RiMapPinLine, RiTimeLine, RiUserLine } from '@remixicon/react'
+import { RiPlaneLine, RiHotelLine, RiCalendarLine, RiRestaurantLine, RiShieldCheckLine, RiCheckLine, RiCloseLine, RiMapPinLine } from '@remixicon/react'
 
 interface BookingDetails {
   [key: string]: any
