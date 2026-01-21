@@ -1,4 +1,4 @@
-import { RiCloseLine, RiShieldCheckLine, RiLockLine, RiBankCardLine, RiEyeLine } from '@remixicon/react'
+import { RiCloseLine, RiShieldCheckLine, RiLockLine, RiEyeLine } from '@remixicon/react'
 
 interface PackageData {
   id: string
@@ -39,14 +39,20 @@ export default function SecureAuthorizationModal({
   const primaryMethod: PaymentMethod = {
     id: '1',
     type: 'visa',
-    last4: '6157',
+    last4: '2356',
     name: 'John Doe'
   }
 
   const getCardIcon = (type: string) => {
-    // Use generic card icon with color coding
-    const colorClass = type === 'visa' ? 'text-blue-600' : type === 'mastercard' ? 'text-red-500' : 'text-gray-600'
-    return <RiBankCardLine size={24} className={colorClass} />
+    // Branded-style card chip (e.g. VISA)
+    const label = type === 'visa' ? 'VISA' : type.toUpperCase()
+    return (
+      <div className="px-3 py-1 rounded-md bg-black flex items-center justify-center">
+        <span className="text-[11px] font-semibold tracking-[0.12em] text-white">
+          {label}
+        </span>
+      </div>
+    )
   }
 
   const formatCardNumber = (last4: string) => {
@@ -63,16 +69,11 @@ export default function SecureAuthorizationModal({
       
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center">
-              <RiShieldCheckLine size={20} className="text-white" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 tracking-wide">TOTAL ORDER</p>
-              <h2 className="text-2xl font-semibold text-gray-900">{packageData.price}</h2>
-            </div>
+        {/* Header / Banner */}
+        <div className="sticky top-0 bg-gray-100 border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+          <div>
+            <p className="text-xs font-medium text-gray-600 tracking-wide">TOTAL ORDER</p>
+            <h2 className="text-2xl font-semibold text-gray-900">{packageData.price}</h2>
           </div>
           <button
             onClick={onCancel}
@@ -85,14 +86,12 @@ export default function SecureAuthorizationModal({
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* Card summary */}
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between">
+          <div className="rounded-xl bg-gray-100 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-7 rounded-md bg-black flex items-center justify-center">
-                {getCardIcon(primaryMethod.type)}
-              </div>
+              {getCardIcon(primaryMethod.type)}
               <div>
                 <p className="text-xs font-medium text-gray-900">
-                  {primaryMethod.type === 'visa' ? 'Visa' : primaryMethod.type} &nbsp; {formatCardNumber(primaryMethod.last4)}
+                  My Visa card &nbsp; {formatCardNumber(primaryMethod.last4)}
                 </p>
                 <p className="text-[11px] text-gray-500">This card will be used for this booking.</p>
               </div>
@@ -103,7 +102,7 @@ export default function SecureAuthorizationModal({
           </div>
 
           {/* Package details */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">{packageData.name}</h3>
@@ -156,9 +155,9 @@ export default function SecureAuthorizationModal({
           </div>
 
           {/* Security note */}
-          <div className="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2.5">
-            <RiLockLine size={16} className="text-blue-600 mt-0.5" />
-            <p className="text-[11px] text-blue-900">
+          <div className="flex items-start gap-2 px-1">
+            <RiLockLine size={16} className="text-gray-600 mt-0.5" />
+            <p className="text-[11px] text-gray-900">
               Your full card details never touch Orbin. Authorization is completed via PCI‑compliant payment providers.
             </p>
           </div>
@@ -171,12 +170,6 @@ export default function SecureAuthorizationModal({
             >
               <RiShieldCheckLine size={20} />
               <span>Authorize execution</span>
-            </button>
-            <button
-              onClick={onSecureHandoff}
-              className="w-full py-3 px-6 bg-white border border-gray-300 hover:border-gray-400 text-gray-900 rounded-lg font-medium transition-colors text-sm"
-            >
-              Complete payment securely
             </button>
             <button
               onClick={onCancel}

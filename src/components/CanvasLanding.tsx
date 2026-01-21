@@ -351,8 +351,8 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     const confirmationKeywords = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'proceed', 'authorize', 'go ahead', 'continue']
     const isConfirmation = confirmationKeywords.some(keyword => answerText === keyword || answerText.startsWith(keyword + ' '))
     
-    if (isConfirmation && waitingForAuthorization && pendingPackageData && !currentQuestion) {
-      // User confirmed - show authorization modal
+    if (isConfirmation && pendingPackageData && !currentQuestion) {
+      // User confirmed - show authorization modal (can be triggered multiple times, even after closing)
       addTypingMessage({
         type: 'result',
         content: `Perfect! Opening secure authorization...`,
@@ -363,8 +363,6 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       if (onPackageSelect) {
         setTimeout(() => {
           onPackageSelect(pendingPackageData)
-          setWaitingForAuthorization(false)
-          setPendingPackageData(null)
         }, 1000)
       }
       setUserInput('')
