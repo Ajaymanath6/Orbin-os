@@ -113,8 +113,10 @@ export default function PlanVacationPage({
   }
 
 
-  // Show empty state if not ready
-  if (!isReady || !destination || !duration) {
+  // Show empty state only until the mission is "ready"
+  // Once isReady is true (e.g. after authorization), always show the cards,
+  // even if destination/duration are missing or still being refined.
+  if (!isReady) {
     return (
       <div className="w-full flex flex-col items-center justify-center py-20">
         <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center mb-6">

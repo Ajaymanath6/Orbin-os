@@ -1607,6 +1607,7 @@ export default function CanvasLanding() {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [isViewportLocked, setIsViewportLocked] = useState(false)
   const [expandedCards, setExpandedCards] = useState<string[]>([])
   const [scanProgress, setScanProgress] = useState(0)
   const [storeUrl, setStoreUrl] = useState('')
@@ -1749,6 +1750,7 @@ export default function CanvasLanding() {
 
   // Handle mouse wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
+    if (isViewportLocked) return
     e.preventDefault()
     const delta = e.deltaY * -0.001
     const newZoom = Math.min(Math.max(0.3, zoom + delta), 3)
@@ -1757,6 +1759,7 @@ export default function CanvasLanding() {
 
   // Handle mouse drag for panning
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (isViewportLocked) return
     // Only allow dragging with middle mouse button (button 1)
     if (e.button === 1) {
       e.preventDefault()
@@ -1766,7 +1769,7 @@ export default function CanvasLanding() {
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return
+    if (!isDragging || isViewportLocked) return
     setPan({
       x: e.clientX - dragStart.x,
       y: e.clientY - dragStart.y
@@ -3138,6 +3141,20 @@ export default function CanvasLanding() {
                 onClick={() => resetView()}
               >
                 <RiHomeLine size={20} />
+              </button>
+              
+              {/* Viewport Lock Button */}
+              <button 
+                className="p-3 rounded-full transition-all duration-300"
+                style={{ 
+                  backgroundColor: isViewportLocked ? DARK_PALETTE.secondary : 'transparent',
+                  color: isViewportLocked ? '#F9FAFB' : '#4B5563',
+                  border: isViewportLocked ? 'none' : '1px solid rgba(156,163,175,0.4)'
+                }}
+                onClick={() => setIsViewportLocked((prev) => !prev)}
+                title={isViewportLocked ? 'Viewport locked' : 'Lock viewport'}
+              >
+                <RiLockLine size={18} />
               </button>
               
               {/* AI Search Button */}
