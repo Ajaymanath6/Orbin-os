@@ -411,7 +411,7 @@ export default function SmartSuggestOrb({
         type: 'thinking',
         content: "Analyzing product details and formulating comprehensive summary...",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_THINKING'
+        statusIndicator: 'ORBIN_THINKING'
       })
     }, messageDelay)
     messageDelay += 3000
@@ -422,7 +422,7 @@ export default function SmartSuggestOrb({
         type: 'analyzing',
         content: "Fine-tuning product highlights and pricing analysis...",
         icon: RiLoader4Fill,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, messageDelay)
     messageDelay += 2500
@@ -433,7 +433,7 @@ export default function SmartSuggestOrb({
         type: 'result',
         content: "**Premium Earl Grey Tea - Complete Summary**\n\n**Product Overview:**\n• Organic Ceylon black tea with natural bergamot oil\n• Hand-picked from high altitude gardens\n• Available in loose leaf & tea bags\n\n**Pricing & Value:**\n• Current Price: $24.99 (25% OFF)\n• Original Price: $32.99\n• Savings: $8.00\n\n**Key Features:**\n• Premium Ceylon black tea leaves\n• Natural bergamot oil from Italy\n• Cornflower petals for visual appeal\n• Organic certified & ethically sourced\n\n**Trust & Policies:**\n• Free shipping on orders over $50\n• 30-day return policy\n• Hand-picked quality assurance",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_COMPLETE'
+        statusIndicator: 'ORBIN_COMPLETE'
       })
       
       // Show summary after typing completes
@@ -542,7 +542,7 @@ export default function SmartSuggestOrb({
         type: 'thinking',
         content: "Analyzing Earl Grey tea composition and identifying key botanical ingredients...",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_ANALYZING'
+        statusIndicator: 'ORBIN_ANALYZING'
       })
     }, 1200)
 
@@ -551,7 +551,7 @@ export default function SmartSuggestOrb({
         type: 'analyzing',
         content: "Scanning flavor profiles, bergamot oil concentrations, and brewing parameters...",
         icon: RiSearchLine,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, 2000)
 
@@ -579,7 +579,7 @@ export default function SmartSuggestOrb({
 
 **Best Served**: With honey or lemon, avoid milk to preserve bergamot essence.`,
           icon: RiCheckLine,
-          statusIndicator: 'SHOPOS_COMPLETE'
+          statusIndicator: 'ORBIN_COMPLETE'
         })
         
         // Don't show regional designs after ingredient analysis - help mode should stay focused on tea info
@@ -1847,7 +1847,7 @@ export default function SmartSuggestOrb({
                     <div className="space-y-3">
                       <div className="bg-gray-50 rounded-lg p-3">
                         <h3 className="text-sm font-semibold text-gray-900 mb-2">AI Shopping Assistant</h3>
-                        <p className="text-xs text-gray-600 mb-1">Powered by: Shopos AI</p>
+                        <p className="text-xs text-gray-600 mb-1">Powered by: Orbin AI</p>
                         <p className="text-xs text-gray-600">Personalization: For Kerala, India</p>
                       </div>
                       

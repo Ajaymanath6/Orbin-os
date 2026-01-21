@@ -6,7 +6,8 @@ import HealthReportPage from './pages/HealthReportPage'
 import FixPage from './pages/FixPage'
 import FixPreviewPage from './pages/FixPreviewPage'
 import ConfirmationPage from './pages/ConfirmationPage'
-import AiShoppingPage from './pages/AiShoppingPage'
+import PlanVacationPage from './pages/PlanVacationPage'
+import PaymentPage from './pages/PaymentPage'
 
 function App() {
 
@@ -49,7 +50,8 @@ function App() {
             </div>
           </MainLayout>
         } />
-        <Route path="/ai-shopping" element={<AiShoppingPage />} />
+        <Route path="/plan-vacation" element={<PlanVacationPage />} />
+        <Route path="/payment" element={<PaymentPage />} />
       </Routes>
     </>
   )

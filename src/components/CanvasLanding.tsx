@@ -26,12 +26,21 @@ import {
   RiToolsLine,
   RiTruckLine,
   RiArrowGoBackLine,
-  RiPlantLine
+  RiPlantLine,
+  RiPlaneLine,
+  RiLockLine,
+  RiExternalLinkLine,
+  RiEyeLine,
+  RiBankCardLine,
+  RiHotelLine
 } from '@remixicon/react'
-import shopOSLogo from '../assets/shop-os-logo.svg'
+import shopOSLogo from '../assets/orbin logo.svg'
 import LoadingPage from '../pages/LoadingPage'
+import PlanVacationPage from '../pages/PlanVacationPage'
 import { ShiningText } from '../components/ui/shining-text'
 import NotificationBanner from './NotificationBanner'
+import SecureAuthorizationModal from './SecureAuthorizationModal'
+import BookingDetailsView from './BookingDetailsView'
 
 // Global window interface extension
 declare global {
@@ -50,6 +59,7 @@ interface NotificationItem {
   timestamp: number
   id?: string
   taskId?: string
+  subtaskId?: string
 }
 
 // Custom SVG Icons
@@ -95,12 +105,17 @@ interface AIConversationCardProps {
   onAutoEnterUrl?: (url: string) => void
   onAutoStartScan?: () => void
   onAddNotification?: (notification: Omit<NotificationItem, 'id'>) => void
+  onVacationDataUpdate?: (data: {destination: string, dates?: string, duration: string, budget?: string, people?: string, tripType?: string, ready?: boolean}) => void
+  onQuestionStateChange?: (isAsking: boolean) => void
+  onPackageSelect?: (packageData: {id: string, name: string, price: string, highlights: string[]}) => void
+  onSubtaskComplete?: (subtaskId: string, details: any) => void
+  onStartBooking?: () => void
 }
 
-function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification }: AIConversationCardProps) {
+function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking }: AIConversationCardProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
-    type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary'
+    type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user'
     content: string
     timestamp: number
     isTyping: boolean
@@ -112,17 +127,38 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const [currentTask, setCurrentTask] = useState<TaskCard | null>(null)
   const [showSkeleton, setShowSkeleton] = useState(true)
   const initializedTaskIdRef = useRef<string | null>(null)
+  const conversationStartedRef = useRef<boolean>(false)
+  const [userInput, setUserInput] = useState('')
+  const [isAskingQuestion, setIsAskingQuestion] = useState(false)
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null)
+  const [questionAnswers, setQuestionAnswers] = useState<{destination?: string, dates?: string, duration?: string, budget?: string, people?: string, tripType?: string}>({})
+  const [showPackages, setShowPackages] = useState(false)
+  const [waitingForAuthorization, setWaitingForAuthorization] = useState(false)
+  const [pendingPackageData, setPendingPackageData] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
 
   const addTypingMessage = useCallback((message: Omit<typeof messages[0], 'id' | 'timestamp' | 'isTyping'> & { statusIndicator?: string }) => {
+    const messageId = `${Date.now()}-${Math.random()}`
     const newMessage = {
       ...message,
-      id: Date.now().toString(),
+      id: messageId,
       timestamp: Date.now(),
       isTyping: true,
       content: '' // Start with empty content
     }
 
-    setMessages(prev => [...prev, newMessage])
+    // Prevent duplicate messages
+    setMessages(prev => {
+      // Check if message with same content already exists
+      const exists = prev.some(msg => 
+        msg.content === message.content && 
+        msg.type === message.type &&
+        Date.now() - msg.timestamp < 1000 // Within 1 second
+      )
+      if (exists) {
+        return prev
+      }
+      return [...prev, newMessage]
+    })
 
     // Show status indicator first if provided
     if (message.statusIndicator) {
@@ -179,6 +215,318 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     }
   }, [])
 
+  const handlePackageSelect = useCallback((packageId: string) => {
+    const packageData = packageId === 'package-1' 
+      ? { id: 'package-1', name: 'Premium Experience', price: `$${questionAnswers.budget || '5000'}`, highlights: ['5-star luxury hotels', 'Private guided tours', 'Fine dining reservations', 'VIP airport transfers'] }
+      : packageId === 'package-2'
+      ? { id: 'package-2', name: 'Balanced Adventure', price: `$${Math.floor(parseInt(questionAnswers.budget || '5000') * 0.7)}`, highlights: ['4-star boutique hotels', 'Small group tours', 'Mix of fine & casual dining', 'Comfortable transportation'] }
+      : { id: 'package-3', name: 'Budget-Friendly', price: `$${Math.floor(parseInt(questionAnswers.budget || '5000') * 0.5)}`, highlights: ['3-star central hotels', 'Self-guided itineraries', 'Local food experiences', 'Public transport included'] }
+    
+    // Step 1: Check what's missing from canvas and create missing elements
+    // Check if package summary, price breakdown, or progress indicators are missing
+    // For now, we'll create a visual summary message
+    addTypingMessage({
+      type: 'result',
+      content: `Excellent choice! I've selected the ${packageData.name} package.\n\nLet me check what's needed on the canvas and prepare everything...`,
+      icon: RiPlaneLine,
+      statusIndicator: 'ORBIN_CHECKING'
+    })
+    
+    setShowPackages(false)
+    
+    // Step 2: After checking, show what was created and prepare for authorization
+    setTimeout(() => {
+      addTypingMessage({
+        type: 'result',
+        content: `✓ Package summary created\n✓ Price breakdown added\n✓ Progress indicators initialized\n\nI've prepared everything. Ready to authorize execution?`,
+        icon: RiCheckLine
+      })
+      
+      // Step 3: Wait for user confirmation instead of immediately showing modal
+      setWaitingForAuthorization(true)
+      setPendingPackageData(packageData)
+    }, 2000)
+  }, [questionAnswers, addTypingMessage])
+
+  const handleUserAnswer = useCallback(() => {
+    if (!userInput.trim()) return
+
+    const userInputText = userInput.trim()
+    const answerText = userInputText.toLowerCase()
+    
+    // Check if user is confirming authorization
+    const confirmationKeywords = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'proceed', 'authorize', 'go ahead', 'continue']
+    const isConfirmation = confirmationKeywords.some(keyword => answerText === keyword || answerText.startsWith(keyword + ' '))
+    
+    if (isConfirmation && waitingForAuthorization && pendingPackageData && !currentQuestion) {
+      // User confirmed - show authorization modal
+      addTypingMessage({
+        type: 'result',
+        content: `Perfect! Opening secure authorization...`,
+        icon: RiCheckLine
+      })
+      
+      // Trigger authorization modal
+      if (onPackageSelect) {
+        setTimeout(() => {
+          onPackageSelect(pendingPackageData)
+          setWaitingForAuthorization(false)
+          setPendingPackageData(null)
+        }, 1000)
+      }
+      setUserInput('')
+      return
+    }
+    
+    // Check if user is asking about bookings/details
+    const bookingKeywords = ['booking', 'details', 'flight', 'hotel', 'itinerary', 'restaurant', 'insurance', 'show me', 'tell me about', 'what is my']
+    const isBookingQuery = bookingKeywords.some(keyword => answerText.includes(keyword))
+    
+    if (isBookingQuery && !currentQuestion) {
+      // User is asking about bookings - handle it
+      addTypingMessage({
+        type: 'result',
+        content: `Let me show you your booking details...`,
+        icon: RiPlaneLine
+      })
+      
+      // Find completed bookings and show the first one, or show all cards
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Your booking details are shown on the right. Click on any completed card (with checkmark) to see detailed information!`,
+          icon: RiCheckLine
+        })
+      }, 1500)
+      setUserInput('')
+      return
+    }
+    
+    if (!currentQuestion) return
+
+    const answer = userInputText
+    
+    // Check for duplicate before adding
+    setMessages(prev => {
+      const recentUserMessage = prev
+        .filter(msg => msg.type === 'user')
+        .slice(-1)[0]
+      
+      // Check if same answer was just submitted (within last 2 seconds)
+      if (recentUserMessage && 
+          recentUserMessage.content === answer &&
+          Date.now() - recentUserMessage.timestamp < 2000) {
+        return prev // Don't add duplicate
+      }
+      
+      // Add user message
+      const userMessage = {
+        id: `user-${Date.now()}-${Math.random()}`,
+        type: 'user' as const,
+        content: answer,
+        timestamp: Date.now(),
+        isTyping: false,
+        icon: RiUser3Line
+      }
+      return [...prev, userMessage]
+    })
+
+    const updatedAnswers = { ...questionAnswers, [currentQuestion]: answer }
+    setQuestionAnswers(updatedAnswers)
+    setUserInput('')
+
+    // Handle based on current question
+    if (currentQuestion === 'destination') {
+      // Ask next question: dates
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Great choice! ${answer} is an amazing destination. What dates are you planning to travel? (e.g., March 15-20, 2024)`,
+          icon: RiPlaneLine
+        })
+        setTimeout(() => {
+          setCurrentQuestion('dates')
+        }, 3000)
+      }, 500)
+    } else if (currentQuestion === 'dates') {
+      // Ask next question: duration
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Perfect! Traveling on ${answer}. How many days are you planning for this trip?`,
+          icon: RiPlaneLine
+        })
+        setTimeout(() => {
+          setCurrentQuestion('duration')
+        }, 3000)
+      }, 500)
+    } else if (currentQuestion === 'duration') {
+      // Ask next question: budget
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Perfect! ${answer} days sounds great. What's your budget for this trip? (e.g., $2000, $5000, $10000)`,
+          icon: RiPlaneLine
+        })
+        setTimeout(() => {
+          setCurrentQuestion('budget')
+        }, 3000)
+      }, 500)
+    } else if (currentQuestion === 'budget') {
+      // Ask next question: number of people
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Got it! Budget of ${answer}. How many people will be traveling?`,
+          icon: RiPlaneLine
+        })
+        setTimeout(() => {
+          setCurrentQuestion('people')
+        }, 3000)
+      }, 500)
+    } else if (currentQuestion === 'people') {
+      // Ask next question: trip type
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Great! ${answer} ${parseInt(answer) === 1 ? 'person' : 'people'}. What type of trip is this? (e.g., honeymoon, couple, family, solo, friends)`,
+          icon: RiPlaneLine
+        })
+        setTimeout(() => {
+          setCurrentQuestion('tripType')
+        }, 3000)
+      }, 500)
+    } else if (currentQuestion === 'tripType') {
+      // All questions answered - show packages
+      const destination = updatedAnswers.destination || ''
+      const duration = updatedAnswers.duration || ''
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Perfect! A ${duration}-day ${updatedAnswers.tripType || 'trip'} to ${destination} for ${updatedAnswers.people || ''} ${parseInt(updatedAnswers.people || '1') === 1 ? 'person' : 'people'} with a budget of ${updatedAnswers.budget || ''}. Let me find the best packages for you. Let's take you to the layout for better visual experience!`,
+          icon: RiPlaneLine
+        })
+        
+        // Show packages after message
+        setTimeout(() => {
+          setShowPackages(true)
+          setIsAskingQuestion(false)
+          setCurrentQuestion(null)
+          if (onQuestionStateChange) {
+            onQuestionStateChange(false)
+          }
+          // Update vacation data (but not ready yet - wait for package selection)
+          if (onVacationDataUpdate) {
+            onVacationDataUpdate({ 
+              destination, 
+              dates: updatedAnswers.dates,
+              duration, 
+              budget: updatedAnswers.budget,
+              people: updatedAnswers.people,
+              tripType: updatedAnswers.tripType,
+              ready: false 
+            })
+          }
+        }, 4000)
+      }, 500)
+    }
+  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete])
+
+  // Notify parent when question state changes
+  useEffect(() => {
+    if (onQuestionStateChange) {
+      onQuestionStateChange(isAskingQuestion)
+    }
+  }, [isAskingQuestion, onQuestionStateChange])
+
+  // Handle booking start trigger from parent
+  useEffect(() => {
+    if (onStartBooking) {
+      // This will be called when payment is authorized
+      const startBookingFlow = () => {
+        // Start booking flights
+        addTypingMessage({
+          type: 'executing',
+          content: `Payment authorized! Starting to book your vacation...`,
+          icon: RiPlaneLine,
+          statusIndicator: 'ORBIN_BOOKING'
+        })
+
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'executing',
+            content: `Booking flights now... Searching for the best options from ${questionAnswers.destination || 'your location'}...`,
+            icon: RiPlaneLine,
+            statusIndicator: 'ORBIN_SEARCHING'
+          })
+        }, 2000)
+
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'result',
+            content: `✓ Flight booked successfully!\n\nFlight Details:\n• Route: ${questionAnswers.destination || 'Destination'}\n• Date: ${questionAnswers.dates || 'TBD'}\n• Passengers: ${questionAnswers.people || '2'}\n\nCheck the notification or click on the "Find flights" card on the right to view full details.`,
+            icon: RiCheckLine
+          })
+          
+          // Trigger subtask completion
+          if (onSubtaskComplete) {
+            const flightDetails = {
+              flight: {
+                flightNumber: 'AA 1234',
+                airline: 'American Airlines',
+                departure: 'JFK Airport',
+                departureTime: '10:30 AM',
+                arrival: questionAnswers.destination ? `${questionAnswers.destination} Airport` : 'NRT Airport',
+                arrivalTime: '2:45 PM',
+                date: questionAnswers.dates || 'March 15, 2025',
+                passengers: questionAnswers.people || '2',
+                confirmationCode: 'ABC123XYZ'
+              }
+            }
+            onSubtaskComplete('1', flightDetails)
+          }
+        }, 5000)
+
+        // Simulate hotel booking after flight
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'executing',
+            content: `Now booking your hotel... Finding the best accommodation options...`,
+            icon: RiHotelLine,
+            statusIndicator: 'ORBIN_BOOKING'
+          })
+        }, 7000)
+
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'result',
+            content: `✓ Hotel booked successfully!\n\nHotel Details:\n• Location: ${questionAnswers.destination || 'Destination'}\n• Check-in: ${questionAnswers.dates || 'TBD'}\n• Guests: ${questionAnswers.people || '2'}\n\nCheck the notification or click on the "Book hotels" card to view full details.`,
+            icon: RiCheckLine
+          })
+          
+          // Trigger hotel subtask completion
+          if (onSubtaskComplete) {
+            const hotelDetails = {
+              hotel: {
+                name: 'Grand Tokyo Hotel',
+                address: questionAnswers.destination || 'Tokyo, Japan',
+                checkIn: questionAnswers.dates || 'March 15, 2025',
+                checkOut: 'March 22, 2025',
+                guests: questionAnswers.people || '2',
+                roomType: 'Deluxe Suite',
+                confirmationNumber: 'HTL789456'
+              }
+            }
+            onSubtaskComplete('2', hotelDetails)
+          }
+        }, 10000)
+      }
+
+      // Expose function to parent
+      ;(window as any).startVacationBooking = startBookingFlow
+    }
+  }, [onStartBooking, onSubtaskComplete, questionAnswers, addTypingMessage])
+
   const startDeploymentFlow = useCallback(() => {
     // Clear existing messages and start deployment flow
     setMessages([])
@@ -191,7 +539,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'summary',
         content: "On it! I'm being deployed to optimize your 23 blurry product images. I'll process each image using advanced AI upscaling and deploy them to your live store. Your store will remain safe until you approve each change.",
         icon: RiLoader4Fill,
-        statusIndicator: 'SHOPOS_DEPLOYING'
+        statusIndicator: 'ORBIN_DEPLOYING'
       })
 
       // Hide the summary after 4 seconds and show progress
@@ -207,7 +555,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'summary',
         content: "Analyzing image quality patterns and determining optimal enhancement algorithms for each product image type.",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_THINKING'
+        statusIndicator: 'ORBIN_THINKING'
       })
 
       setTimeout(() => {
@@ -222,7 +570,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'summary',
         content: "Planning deployment sequence: batch processing 23 images, applying super-resolution AI, optimizing file formats, and preparing rollback procedures.",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_PLANNING'
+        statusIndicator: 'ORBIN_PLANNING'
       })
 
       setTimeout(() => {
@@ -237,7 +585,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "Processing images using deep learning upscaling model... 8/23 complete",
         icon: RiLoader4Fill,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, messageDelay)
     messageDelay += 3000
@@ -248,7 +596,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "Excellent progress! 18/23 images enhanced. File sizes reduced by 72% while maintaining quality.",
         icon: RiLoader4Fill,
-        statusIndicator: 'SHOPOS_OPTIMIZING'
+        statusIndicator: 'ORBIN_OPTIMIZING'
       })
     }, messageDelay)
     messageDelay += 2000
@@ -259,7 +607,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "19/23 images complete...",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, messageDelay)
     messageDelay += 1500
@@ -270,7 +618,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "20/23 images complete...",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, messageDelay)
     messageDelay += 1500
@@ -281,7 +629,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "21/23 images complete...",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, messageDelay)
     messageDelay += 1500
@@ -292,7 +640,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "22/23 images complete...",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_PROCESSING'
+        statusIndicator: 'ORBIN_PROCESSING'
       })
     }, messageDelay)
     messageDelay += 1500
@@ -303,7 +651,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "23/23 images complete - finalizing deployment...",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_FINALIZING'
+        statusIndicator: 'ORBIN_FINALIZING'
       })
     }, messageDelay)
     messageDelay += 2000
@@ -314,7 +662,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'result',
         content: "All done! Successfully deployed 23 optimized images to your live store. Your customers will now see crisp, fast-loading product photos. Page load speed improved by 1.9 seconds!",
         icon: RiCheckLine,
-        statusIndicator: 'SHOPOS_COMPLETED'
+        statusIndicator: 'ORBIN_COMPLETED'
       })
 
       // Trigger notification system after deployment completes
@@ -339,7 +687,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'summary',
         content: "Analyzing remaining optimization opportunities and prioritizing next actions based on revenue impact and implementation complexity.",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_ANALYZING_NEXT'
+        statusIndicator: 'ORBIN_ANALYZING_NEXT'
       })
 
       setTimeout(() => {
@@ -369,6 +717,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const startAIConversation = useCallback((task: TaskCard) => {
     // Initial greeting based on task type with structured framework
     const greetings = {
+      'plan-vacation': "Hello! I'm your vacation planning assistant. I'll help you plan an amazing trip! Let me ask you a few questions to get started.",
       'store-health': "Hello! I'm your intelligent AI agent for Store Health Check. Let's break down what we'll accomplish together.",
       'seo': "Hello! I'm your intelligent AI agent for SEO Analysis. Let's approach this systematically.",
       'performance': "Hello! I'm your intelligent AI agent for Performance Optimization. Let's think through this step by step.",
@@ -376,7 +725,8 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       'default': `Hello! I'm your intelligent AI agent for ${task.title}. Let's structure our approach to this task.`
     }
 
-    const taskType = task.id.includes('health') ? 'store-health' :
+    const taskType = task.id === 'plan-vacation' ? 'plan-vacation' :
+                    task.id.includes('health') ? 'store-health' :
                     task.id.includes('seo') ? 'seo' :
                     task.id.includes('performance') ? 'performance' :
                     task.id.includes('conversion') ? 'conversion' : 'default'
@@ -388,9 +738,9 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     setTimeout(() => {
       addTypingMessage({
         type: 'summary',
-        content: `I'm Shopos AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`,
+        content: `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`,
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_THINKING'
+        statusIndicator: 'ORBIN_THINKING'
       })
 
       // Hide the summary after 5 seconds and show normal responses
@@ -406,18 +756,38 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'thinking',
         content: `${greetings[taskType]}`,
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_THINKING'
+        statusIndicator: 'ORBIN_THINKING'
       })
     }, messageDelay)
     messageDelay += 6000 // Increased for status indicator
 
-    // Message 2: Analysis
+    // Vacation-specific questions flow
+    if (taskType === 'plan-vacation') {
+      // Question 1: Destination
+      setTimeout(() => {
+        setIsAskingQuestion(true)
+        setCurrentQuestion('destination')
+        if (onQuestionStateChange) {
+          onQuestionStateChange(true)
+        }
+        addTypingMessage({
+          type: 'thinking',
+          content: "Where would you like to go? (e.g., Japan, Paris, Bali)",
+          icon: RiPlaneLine,
+          statusIndicator: 'ORBIN_THINKING'
+        })
+      }, messageDelay)
+      
+      return // Exit early for vacation flow - wait for user input
+    }
+
+    // Message 2: Analysis (for non-vacation tasks)
     setTimeout(() => {
       addTypingMessage({
         type: 'thinking',
         content: "Analysis: I'll run a comprehensive store diagnostic to identify optimization opportunities.",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_ANALYZING'
+        statusIndicator: 'ORBIN_ANALYZING'
       })
     }, messageDelay)
     messageDelay += 7000 // Increased for status indicator
@@ -428,7 +798,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'planning',
         content: "Plan:\n• Enter store URL\n• Run comprehensive scan\n• Generate optimization report",
         icon: RiBrainLine,
-        statusIndicator: 'SHOPOS_PLANNING'
+        statusIndicator: 'ORBIN_PLANNING'
       })
     }, messageDelay)
     messageDelay += 6000 // Increased for status indicator
@@ -439,7 +809,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "Execution: Entering demo URL for analysis...",
         icon: RiSearchEyeLine,
-        statusIndicator: 'SHOPOS_SEARCHING_TOOLS'
+        statusIndicator: 'ORBIN_SEARCHING_TOOLS'
       })
 
       // Auto-enter URL after message completes
@@ -468,7 +838,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         type: 'executing',
         content: "Starting comprehensive store scan...",
         icon: RiSearchEyeLine,
-        statusIndicator: 'SHOPOS_INITIALIZING'
+        statusIndicator: 'ORBIN_INITIALIZING'
       })
 
       // Auto-click scan button after message completes
@@ -489,7 +859,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }))
       }, 4000) // Wait for status + typing to complete
     }, messageDelay)
-  }, [addTypingMessage, onAutoEnterUrl, onAutoStartScan])
+  }, [addTypingMessage, onAutoEnterUrl, onAutoStartScan, onVacationDataUpdate])
 
   const [scanningMessageShown, setScanningMessageShown] = useState(false)
   const [completionMessageShown, setCompletionMessageShown] = useState(false)
@@ -506,7 +876,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         content: "Scanning your store and analyzing optimization opportunities...",
         icon: RiSearchLine,
         status: 'active',
-        statusIndicator: 'SHOPOS_SCANNING'
+        statusIndicator: 'ORBIN_SCANNING'
       })
     }
 
@@ -519,7 +889,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         content: "Analysis complete! I've identified key optimization opportunities. Here are your detailed findings:",
           icon: RiCheckLine,
           status: 'completed',
-          statusIndicator: 'SHOPOS_GENERATING_REPORT'
+          statusIndicator: 'ORBIN_GENERATING_REPORT'
         })
       
       // Update plan to show final step completed
@@ -559,30 +929,60 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     if (expandedCards.length > 0) {
       const activeTaskId = expandedCards[expandedCards.length - 1]
       const task = taskCards.find(t => t.id === activeTaskId)
-      if (task && task !== currentTask) {
-        if (initializedTaskIdRef.current === task.id) {
-          return
+      
+      if (task) {
+        // If task changed, reset everything
+        if (task !== currentTask) {
+          // Prevent duplicate initialization - only if already initialized AND conversation started
+          if (initializedTaskIdRef.current === task.id && conversationStartedRef.current) {
+            return
+          }
+          
+          // Reset flags and state
+          initializedTaskIdRef.current = task.id
+          conversationStartedRef.current = false
+          setCurrentTask(task)
+          setMessages([]) // Reset messages for new task
+          setShowSkeleton(true)
+          setScanningMessageShown(false) // Reset scanning message flag
+          setCompletionMessageShown(false) // Reset completion message flag
+          setUserInput('')
+          setIsAskingQuestion(false)
+          setCurrentQuestion(null)
+          setQuestionAnswers({})
+          setShowPackages(false)
         }
-        initializedTaskIdRef.current = task.id
-        setCurrentTask(task)
-        setMessages([]) // Reset messages for new task
-        setShowSkeleton(true)
-        setScanningMessageShown(false) // Reset scanning message flag
-        setCompletionMessageShown(false) // Reset completion message flag
         
-        // 5-second delay before starting AI interaction
-        setTimeout(() => {
-          setShowSkeleton(false)
-          startAIConversation(task)
-        }, 5000)
+        // Start conversation if not already started (for both new and existing tasks)
+        if (initializedTaskIdRef.current === task.id && !conversationStartedRef.current) {
+          const timeoutId = setTimeout(() => {
+            // Double check we haven't already started
+            if (initializedTaskIdRef.current === task.id && !conversationStartedRef.current) {
+              conversationStartedRef.current = true
+              setShowSkeleton(false)
+              startAIConversation(task)
+            }
+          }, 2000)
+          
+          return () => {
+            clearTimeout(timeoutId)
+          }
+        }
       }
     } else {
       setCurrentTask(null)
       setMessages([])
       setShowSkeleton(true)
       initializedTaskIdRef.current = null
+      conversationStartedRef.current = false
+      setUserInput('')
+      setIsAskingQuestion(false)
+      setCurrentQuestion(null)
+      setQuestionAnswers({})
+      setShowPackages(false)
     }
-  }, [expandedCards, taskCards, currentTask, startAIConversation])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedCards, taskCards, currentTask])
 
 
 
@@ -616,7 +1016,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               <RiSparklingFill size={16} style={{ color: '#374151' }} />
             </div>
             <div>
-              <div className="text-sm font-bold text-gray-900">Ask Shopos Agent...</div>
+              <div className="text-sm font-bold text-gray-900">Ask Orbin Agent...</div>
             </div>
           </div>
           
@@ -644,11 +1044,40 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto" ref={(el) => {
-        if (el && messages.length > 0) {
-          el.scrollTop = el.scrollHeight;
-        }
-      }}>
+      <div 
+        className="flex-1 overflow-y-auto min-h-0"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#9CA3AF #F9FAFB',
+          maxHeight: '100%'
+        }}
+        ref={(el) => {
+          if (el) {
+            // Auto-scroll to bottom when new messages arrive
+            if (messages.length > 0 || showPackages) {
+              setTimeout(() => {
+                el.scrollTop = el.scrollHeight;
+              }, 100);
+            }
+          }
+        }}
+      >
+        <style>{`
+          .flex-1.overflow-y-auto::-webkit-scrollbar {
+            width: 8px;
+          }
+          .flex-1.overflow-y-auto::-webkit-scrollbar-track {
+            background: #F9FAFB;
+            border-radius: 10px;
+          }
+          .flex-1.overflow-y-auto::-webkit-scrollbar-thumb {
+            background: #9CA3AF;
+            border-radius: 10px;
+          }
+          .flex-1.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: #6B7280;
+          }
+        `}</style>
         <div className="p-4 space-y-4">
           {showSkeleton ? (
             /* Skeleton Loader */
@@ -679,6 +1108,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               // Use icon from message if provided, otherwise determine based on content and type
               let IconComponent = message.icon || RiSparklingFill
               const iconStyle = { color: '#374151' } // Dark gray
+              const isUserMessage = message.type === 'user'
               
               // If no icon provided, determine based on message content and type
               if (!message.icon) {
@@ -690,7 +1120,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               }
               
               return (
-                <div key={message.id} className="flex items-start gap-3 animate-fadeIn">
+                <div key={message.id} className={`flex items-start gap-3 animate-fadeIn ${isUserMessage ? 'flex-row-reverse' : ''}`}>
                   <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
                     <IconComponent 
                       size={14} 
@@ -698,15 +1128,15 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
                       className={IconComponent === RiLoader4Fill ? 'animate-spin' : ''}
                     />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className={`flex-1 min-w-0 ${isUserMessage ? 'text-right' : ''}`}>
                     {message.type === 'summary' ? (
                       <div className="mb-3">
                         <ShiningText text={message.content} className="text-sm leading-relaxed" />
                       </div>
                     ) : (
-                      <p className={`text-xs leading-relaxed ${
+                      <p className={`text-sm leading-relaxed ${
                         message.isTyping ? 'text-gray-600' : 'text-gray-800'
-                      }`}>
+                      }`} style={{ fontSize: '16px' }}>
                         <>
                           {message.content.split('\n').map((line, index) => (
                             <span key={index}>
@@ -733,7 +1163,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
                       </>
                       </p>
                     )}
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="text-xs text-gray-400 mt-1" style={{ fontSize: '12px' }}>
                       {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
@@ -741,9 +1171,107 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               )
             })
           )}
+          
+          {/* Packages Display - Show as part of chat messages */}
+          {showPackages && (
+            <div className="mt-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-bold text-gray-900 mb-1">Top 3 Vacation Packages</h3>
+                <p className="text-xs text-gray-600">Click on a package to start planning</p>
+              </div>
+              <div className="space-y-2">
+                {[
+                  {
+                    id: 'package-1',
+                    title: 'Premium Experience',
+                    price: `$${questionAnswers.budget || '5000'}`,
+                    highlights: [
+                      '5-star luxury hotels',
+                      'Private guided tours',
+                      'Fine dining reservations',
+                      'VIP airport transfers'
+                    ]
+                  },
+                  {
+                    id: 'package-2',
+                    title: 'Balanced Adventure',
+                    price: `$${Math.floor(parseInt(questionAnswers.budget || '5000') * 0.7)}`,
+                    highlights: [
+                      '4-star boutique hotels',
+                      'Small group tours',
+                      'Mix of fine & casual dining',
+                      'Comfortable transportation'
+                    ]
+                  },
+                  {
+                    id: 'package-3',
+                    title: 'Budget-Friendly',
+                    price: `$${Math.floor(parseInt(questionAnswers.budget || '5000') * 0.5)}`,
+                    highlights: [
+                      '3-star central hotels',
+                      'Self-guided itineraries',
+                      'Local food experiences',
+                      'Public transport included'
+                    ]
+                  }
+                ].map((pkg) => (
+                  <div
+                    key={pkg.id}
+                    onClick={() => handlePackageSelect(pkg.id)}
+                    className="p-3 border border-gray-200 rounded-lg cursor-pointer hover:border-gray-300 hover:bg-gray-50 transition-all bg-white"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-900">{pkg.title}</h4>
+                      <span className="text-sm font-bold text-gray-900">{pkg.price}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {pkg.highlights.map((highlight, idx) => (
+                        <li key={idx} className="text-xs text-gray-600 flex items-start">
+                          <span className="mr-2">•</span>
+                          <span>{highlight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Input Field - Always visible */}
+      <div className="p-4 border-t bg-white" style={{ borderColor: '#E5E7EB' }}>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            placeholder={isAskingQuestion ? "Type your answer here..." : "Type a message or ask a question..."}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none"
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'black'
+              e.currentTarget.style.boxShadow = '0 0 0 2px rgba(0, 0, 0, 0.2)'
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '#D1D5DB'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && userInput.trim()) {
+                handleUserAnswer()
+              }
+            }}
+          />
+          <button
+            onClick={handleUserAnswer}
+            disabled={!userInput.trim()}
+            className="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm font-medium"
+          >
+            Send
+          </button>
+        </div>
+      </div>
 
     </div>
   )
@@ -758,10 +1286,10 @@ const DEFAULT_TASKS: TaskCard[] = [
     iconBg: DARK_PALETTE.primary
   },
   {
-    id: 'abandoned-cart',
-    title: 'Smart Shopping Assistant',
-    subtitle: 'Intuitive AI assistant that helps with product purchases, queries, and automated checkout',
-    icon: RiNotification3Line,
+    id: 'plan-vacation',
+    title: 'Plan My Vacation',
+    subtitle: 'Plan a 7-day trip to Japan: find flights, book hotels, create an itinerary, reserve restaurants, and get travel insurance',
+    icon: RiPlaneLine,
     iconBg: DARK_PALETTE.secondary
   }
 ]
@@ -779,6 +1307,24 @@ export default function CanvasLanding() {
   const [taskToEdit, setTaskToEdit] = useState<string | null>(null)
   const [editTaskName, setEditTaskName] = useState('')
   const [editTaskDesc, setEditTaskDesc] = useState('')
+  const [newTaskName, setNewTaskName] = useState('')
+  const [newTaskDesc, setNewTaskDesc] = useState('')
+  const [vacationData, setVacationData] = useState<{destination: string, duration: string, ready: boolean} | null>(null)
+  const [isAskingVacationQuestions, setIsAskingVacationQuestions] = useState(false)
+  const [showAuthorizationModal, setShowAuthorizationModal] = useState(false)
+  const [selectedPackage, setSelectedPackage] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
+  const [missingElementsCreated, setMissingElementsCreated] = useState(false)
+  const [showPaymentGateway, setShowPaymentGateway] = useState(false)
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
+  const [showPackagePreview, setShowPackagePreview] = useState(false)
+  const [vacationSubtasks, setVacationSubtasks] = useState<Array<{id: string, title: string, status: 'pending' | 'in-progress' | 'completed', agent?: string, details?: any}>>([
+    { id: '1', title: 'Find flights', status: 'pending' },
+    { id: '2', title: 'Book hotels', status: 'pending' },
+    { id: '3', title: 'Create itinerary', status: 'pending' },
+    { id: '4', title: 'Reserve restaurants', status: 'pending' },
+    { id: '5', title: 'Get travel insurance', status: 'pending' }
+  ])
+  const [selectedBookingDetails, setSelectedBookingDetails] = useState<{id: string, title: string, status: 'pending' | 'in-progress' | 'completed', agent?: string, details?: any} | null>(null)
   
 
   useEffect(() => {
@@ -794,43 +1340,34 @@ export default function CanvasLanding() {
 
   const TEMPLATES: Array<{ id: string; title: string; subtitle: string; icon: TaskCard['icon']; iconBg: string }> = [
     { id: 'store-health-template', title: 'Store Health Check', subtitle: 'Connect your Shopify store for an instant AI diagnostic and optimization recommendations', icon: RiPulseLine, iconBg: '#F3F4F6' },
-    { id: 'abandoned-cart', title: 'Smart Shopping Assistant', subtitle: 'Intuitive AI assistant for purchases', icon: RiNotification3Line, iconBg: '#F3F4F6' },
-    { id: 'inventory-mentor', title: 'Inventory Mentor', subtitle: 'Forecasts and restock alerts', icon: RiUser3Line, iconBg: '#F3F4F6' }
+    { id: 'plan-vacation', title: 'Plan My Vacation', subtitle: 'Plan a 7-day trip to Japan: find flights, book hotels, create an itinerary, reserve restaurants, and get travel insurance', icon: RiPlaneLine, iconBg: '#F3F4F6' }
   ]
 
-    const addTemplateTask = (templateId: string) => {
-    const tpl = TEMPLATES.find(t => t.id === templateId)
-    if (!tpl) return
+  const handleCreateTask = () => {
+    if (!newTaskName.trim()) return
     
-    // Handle Store Health template specially - create a new instance
-    if (templateId === 'store-health-template') {
-      setShowAddTask(false)
-      
-      // Create a new unique store health task
-      const newTaskId = `store-health-${Date.now()}`
+    // Create a new unique task ID
+    const newTaskId = `task-${Date.now()}`
     const newTask: TaskCard = {
-        id: newTaskId,
-        title: 'Store Health Check',
-        subtitle: 'Connect your Shopify store for an instant AI diagnostic and optimization recommendations',
-        icon: RiPulseLine,
-        iconBg: DARK_PALETTE.primary
-      }
-      
-      // Add the new task to taskCards
-    setTaskCards(prev => [...prev, newTask])
-      
-      // Trigger the new task
-      setTimeout(() => {
-        handleTaskClick(newTaskId)
-      }, 100) // Small delay to ensure task is added first
-      return
+      id: newTaskId,
+      title: newTaskName.trim(),
+      subtitle: newTaskDesc.trim() || 'Custom AI task',
+      icon: RiStarFill,
+      iconBg: DARK_PALETTE.secondary
     }
+    
+    // Add the new task to taskCards
+    setTaskCards(prev => [...prev, newTask])
+    
+    // Reset form and close modal
+    setNewTaskName('')
+    setNewTaskDesc('')
+    setShowAddTask(false)
+  }
 
-    // For other templates, add as new task cards
-    let id = templateId
-    let tries = 1
-    while (taskCards.find(t => t.id === id)) id = `${templateId}-${tries++}`
-    setTaskCards(prev => [...prev, { id, title: tpl.title, subtitle: tpl.subtitle, icon: tpl.icon, iconBg: tpl.iconBg }])
+  const cancelCreateTask = () => {
+    setNewTaskName('')
+    setNewTaskDesc('')
     setShowAddTask(false)
   }
 
@@ -1114,7 +1651,20 @@ export default function CanvasLanding() {
 
   // Handle task card click
   const handleTaskClick = (taskId: string) => {
-    if (taskId === 'store-health' || taskId.startsWith('store-health-')) {
+    if (taskId === 'plan-vacation') {
+      // Expand vacation planning on canvas (like Store Health Check)
+      if (!expandedCards.includes(taskId)) {
+        setExpandedCards(prev => [...prev, taskId])
+        setNotifications([])
+        setActiveAgent(prev => ({
+          ...prev,
+          name: 'Orbin AI',
+          statusText: 'Ready to plan your vacation',
+          subheading: 'Vacation Planning Agent',
+          status: 'ready'
+        }))
+      }
+    } else if (taskId === 'store-health' || taskId.startsWith('store-health-')) {
       if (!expandedCards.includes(taskId)) {
         setExpandedCards(prev => [...prev, taskId])
         setScanProgress(0)
@@ -1128,13 +1678,6 @@ export default function CanvasLanding() {
           status: 'ready'
         }))
         // Don't clear storeUrl here - it should be set from AI search if provided
-      }
-    } else if (taskId === 'abandoned-cart') {
-      // Open AI Shopping Assistant in new tab
-      const basename = import.meta.env.PROD ? '/shopos' : ''
-      const newWindow = window.open(`${basename}/ai-shopping`, '_blank')
-      if (newWindow) {
-        newWindow.focus()
       }
     } else if (taskId === 'seo-optimizer' || taskId.includes('seo')) {
       // Handle SEO optimizer (existing interface is built)
@@ -1228,7 +1771,7 @@ export default function CanvasLanding() {
     <div 
       className="fixed inset-0 overflow-hidden" 
       style={{ 
-        background: 'linear-gradient(135deg, #FFF9C4 0%, #F0F4C3 8%, #E8F5E8 20%, #C8E6C9 40%, #A5D6A7 100%)'
+        background: 'radial-gradient(ellipse 120% 80% at top left, #B8D4E8 0%, #C8DCE8 25%, #D6E3F0 50%, #E2E6EB 75%, #E2E6EB 100%)'
       }}
     >
       {/* Canvas Container */}
@@ -1255,13 +1798,13 @@ export default function CanvasLanding() {
             <div className="mb-8">
               <img 
                 src={shopOSLogo} 
-                alt="Shop OS" 
+                alt="Orbin" 
                 className="h-16 mx-auto"
                 draggable={false}
               />
             </div>
             <h1 className="text-4xl font-light text-gray-800 font-sans">
-              Welcome to Shop OS
+              Welcome to Orbin
             </h1>
           </div>
 
@@ -1271,8 +1814,7 @@ export default function CanvasLanding() {
             {taskCards.map((task) => {
               const iconMap: Record<string, React.ComponentType<{ size?: string | number }>> = {
                 'store-health': RiPulseLine,
-                'abandoned-cart': RiNotification3Line,
-                'inventory-mentor': RiUser3Line
+                'plan-vacation': RiPlaneLine
               }
               const IconComponent = (task.icon || iconMap[task.id] || RiStarFill)
               return (
@@ -1403,7 +1945,7 @@ export default function CanvasLanding() {
                 {/* Subtitle */}
                 <div className="mb-8 flex-1">
                   <p className="text-gray-500 text-sm leading-relaxed font-medium group-hover:text-gray-600 transition-colors text-left">
-                    Create a new custom AI task or choose from templates
+                    Create a new custom AI task with your own name and description
                   </p>
                 </div>
                 
@@ -1447,7 +1989,7 @@ export default function CanvasLanding() {
               <div key={sectionId} className="mt-16 flex flex-col items-start">
                 {/* Section Container with Background */}
                 <div 
-                  className="bg-gradient-to-br from-green-50/40 to-yellow-50/40 rounded-3xl p-6 border border-green-200/30"
+                  className="bg-gradient-to-br from-blue-50/40 to-gray-50/40 rounded-3xl p-6 border border-blue-200/30"
                   style={{ width: `${sectionWidth}px` }}
                 >
                   {/* Section Header */}
@@ -1785,19 +2327,326 @@ export default function CanvasLanding() {
                         )
                         )}
 
+            {/* Plan Vacation Expandable Interface - Only when NOT in section */}
+            {expandedCards.filter(cardId => cardId === 'plan-vacation' && !getProjectSection(cardId)).map(vacationId => (
+              <div 
+                key={vacationId}
+                className={`transition-all duration-300 ${
+                  sectionMode ? 'cursor-pointer' : ''
+                } ${
+                  selectedProjects.includes(vacationId) ? 'border-2 border-dashed border-gray-600' : ''
+                }`}
+                style={{ 
+                  width: '1440px',
+                  minWidth: '1440px',
+                  flexShrink: 0,
+                  marginBottom: '50px'
+                }}
+                onClick={() => handleProjectSelection(vacationId)}
+              >
+                {/* Main Heading */}
+                <div className="text-left mb-6 relative" style={{ marginTop: '120px' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-3xl font-bold mb-2 text-gray-900">
+                        Plan My Vacation
+                      </h1>
+                      <p className="text-lg text-gray-600">
+                        AI-powered vacation planning workspace
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interface with AI Card Layout */}
+                <div className="flex gap-6">
+                  {/* AI Conversation Card - Left Side */}
+                  <div 
+                    className="flex-shrink-0 space-y-4 transition-all duration-300"
+                    style={{ 
+                      width: isAskingVacationQuestions ? '600px' : (vacationData?.ready || showPaymentGateway ? '320px' : '600px')
+                    }}
+                  >
+                    {/* AI Conversation Card */}
+                    <div style={{ height: isAskingVacationQuestions ? '700px' : '500px' }}>
+                      <AIConversationCard 
+                        taskCards={taskCards}
+                        expandedCards={[vacationId]}
+                        scanProgress={scanProgress}
+                        isScanning={false}
+                        onAddNotification={addNotification}
+                        onVacationDataUpdate={(data) => {
+                          setVacationData({ ...data, ready: data.ready !== false })
+                        }}
+                        onQuestionStateChange={(isAsking) => setIsAskingVacationQuestions(isAsking)}
+                        onPackageSelect={(packageData) => {
+                          setSelectedPackage(packageData)
+                          setShowAuthorizationModal(true)
+                        }}
+                        onSubtaskComplete={(subtaskId, details) => {
+                          setVacationSubtasks(prev => prev.map(task => 
+                            task.id === subtaskId 
+                              ? { ...task, status: 'completed' as const, details }
+                              : task
+                          ))
+                          // Show notification when flight is booked
+                          if (subtaskId === '1') {
+                            addNotification({
+                              type: 'info',
+                              title: 'Flight Booked! ✈️',
+                              message: 'Your flight has been successfully booked. Click "View Details" to see your booking.',
+                              actionRequired: false,
+                              timestamp: Date.now(),
+                              taskId: 'plan-vacation',
+                              subtaskId: '1'
+                            })
+                          }
+                          // Show notification when hotel is booked
+                          if (subtaskId === '2') {
+                            addNotification({
+                              type: 'info',
+                              title: 'Hotel Booked! 🏨',
+                              message: 'Your hotel reservation has been confirmed. Click "View Details" to see your booking.',
+                              actionRequired: false,
+                              timestamp: Date.now(),
+                              taskId: 'plan-vacation',
+                              subtaskId: '2'
+                            })
+                          }
+                        }}
+                        onStartBooking={() => {
+                          // This callback is set up in AIConversationCard
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Vacation Planning Interface - Right Side */}
+                  <div className={`transition-all duration-300 ${(vacationData?.ready && !isAskingVacationQuestions) || showPaymentGateway || showPackagePreview || selectedBookingDetails ? 'flex-1' : 'flex-none'}`} style={{ width: (vacationData?.ready && !isAskingVacationQuestions) || showPaymentGateway || showPackagePreview || selectedBookingDetails ? 'auto' : '0px', overflow: (vacationData?.ready && !isAskingVacationQuestions) || showPaymentGateway || showPackagePreview || selectedBookingDetails ? 'visible' : 'hidden' }}>
+                    <div className="w-full mb-4">
+                      <NotificationBanner activeAgent={activeAgent} />
+                    </div>
+                    
+                    {/* Payment Gateway Inline View */}
+                    {showPaymentGateway && selectedPackage && (
+                      <div 
+                        className="rounded-lg shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden mb-4"
+                        style={{ 
+                          background: 'rgba(255, 255, 255, 0.95)',
+                          backdropFilter: 'blur(25px)',
+                          boxShadow: `
+                            0 12px 40px rgba(0, 0, 0, 0.15),
+                            inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                            inset 0 -1px 0 rgba(255, 255, 255, 0.3)
+                          `
+                        }}
+                      >
+                        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <RiLockLine size={18} className="text-green-600" />
+                            <h3 className="text-sm font-semibold text-gray-900">Secure Payment Gateway</h3>
+                          </div>
+                          <button
+                            onClick={() => setShowPaymentGateway(false)}
+                            className="w-6 h-6 rounded hover:bg-gray-100 flex items-center justify-center"
+                          >
+                            <RiCloseLine size={16} className="text-gray-500" />
+                          </button>
+                        </div>
+                        <div className="p-6">
+                          {/* Stripe Checkout iframe placeholder - In production, this would be actual Stripe Checkout */}
+                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center bg-gray-50">
+                            <RiBankCardLine size={48} className="text-gray-400 mx-auto mb-4" />
+                            <p className="text-sm font-medium text-gray-700 mb-2">Stripe Payment Gateway</p>
+                            <p className="text-xs text-gray-500 mb-4">
+                              Package: {selectedPackage.name} - {selectedPackage.price}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              In production, this would embed Stripe Checkout iframe for secure payment processing.
+                              <br />
+                              Your card details are never shared with the AI.
+                            </p>
+                            <button
+                              onClick={() => {
+                                // Step 1: Hide payment gateway
+                                setShowPaymentGateway(false)
+                                
+                                // Step 2: Get vacation data from AIConversationCard's questionAnswers
+                                // We need to pass this data or get it from the component
+                                // For now, use existing vacationData or create default
+                                const destination = vacationData?.destination || ''
+                                const duration = vacationData?.duration || ''
+                                
+                                // Step 3: Set vacation data to ready (this shows cards on right panel)
+                                setVacationData({ 
+                                  destination,
+                                  duration,
+                                  ready: true 
+                                })
+                                
+                                // Step 4: Add notification
+                                addNotification({
+                                  type: 'info',
+                                  title: 'Payment Authorized',
+                                  message: `Payment authorized for ${selectedPackage.name}. Starting vacation planning...`,
+                                  actionRequired: false,
+                                  timestamp: Date.now(),
+                                  taskId: 'plan-vacation'
+                                })
+                                
+                                // Step 5: Trigger booking flow in chat
+                                setTimeout(() => {
+                                  if ((window as any).startVacationBooking) {
+                                    (window as any).startVacationBooking()
+                                  }
+                                }, 500)
+                                
+                                // Step 6: Clear selected package
+                                setTimeout(() => {
+                                  setSelectedPackage(null)
+                                }, 1000)
+                              }}
+                              className="mt-4 px-6 py-2 bg-gray-900 hover:bg-black text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                              Complete Payment
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Package Preview Browser View */}
+                    {showPackagePreview && selectedPackage && (
+                      <div 
+                        className="rounded-lg shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden mb-4"
+                        style={{ 
+                          background: 'rgba(255, 255, 255, 0.95)',
+                          backdropFilter: 'blur(25px)',
+                          boxShadow: `
+                            0 12px 40px rgba(0, 0, 0, 0.15),
+                            inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                            inset 0 -1px 0 rgba(255, 255, 255, 0.3)
+                          `
+                        }}
+                      >
+                        {/* Browser Chrome */}
+                        <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 flex items-center gap-2">
+                          <div className="flex gap-1.5">
+                            <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                            <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                            <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                          </div>
+                          <div className="flex-1 bg-white rounded px-3 py-1 text-xs text-gray-600 mx-4">
+                            https://vacation-packages.example.com/{selectedPackage.id}
+                          </div>
+                          <RiExternalLinkLine size={14} className="text-gray-400" />
+                        </div>
+                        {/* Package Details Page */}
+                        <div className="p-8 bg-white">
+                          <div className="max-w-3xl mx-auto">
+                            <h1 className="text-3xl font-bold text-gray-900 mb-2">{selectedPackage.name}</h1>
+                            <p className="text-4xl font-bold text-gray-900 mb-6">{selectedPackage.price}</p>
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                              {selectedPackage.highlights.map((highlight, idx) => (
+                                <div key={idx} className="flex items-start gap-2">
+                                  <RiCheckLine size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+                                  <p className="text-sm text-gray-700">{highlight}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="border-t border-gray-200 pt-6">
+                              <p className="text-sm text-gray-600 mb-4">
+                                This package includes everything you need for an unforgettable vacation experience.
+                              </p>
+                              <button className="px-6 py-3 bg-gray-900 hover:bg-black text-white rounded-lg font-medium transition-colors">
+                                Book Now
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Booking Details View or PlanVacationPage */}
+                    {selectedBookingDetails ? (
+                      <div 
+                        className="rounded-lg shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden"
+                        style={{ 
+                          background: 'rgba(255, 255, 255, 0.95)',
+                          backdropFilter: 'blur(25px)',
+                          boxShadow: `
+                            0 12px 40px rgba(0, 0, 0, 0.15),
+                            inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                            inset 0 -1px 0 rgba(255, 255, 255, 0.3)
+                          `,
+                          minHeight: '600px'
+                        }}
+                      >
+                        <BookingDetailsView 
+                          subtask={selectedBookingDetails}
+                          onClose={() => setSelectedBookingDetails(null)}
+                        />
+                      </div>
+                    ) : (
+                      <div 
+                        className="rounded-lg shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden"
+                        style={{ 
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          backdropFilter: 'blur(25px)',
+                          boxShadow: `
+                            0 12px 40px rgba(0, 0, 0, 0.15),
+                            inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                            inset 0 -1px 0 rgba(255, 255, 255, 0.3)
+                          `,
+                          minHeight: 'auto'
+                        }}
+                      >
+                        <div className="p-6">
+                          <PlanVacationPage 
+                            destination={vacationData?.destination}
+                            duration={vacationData?.duration}
+                            isReady={vacationData?.ready || false}
+                            subtasks={vacationSubtasks}
+                            onSubtaskUpdate={(updatedSubtasks) => {
+                              // Only update if there's an actual change to prevent loops
+                              const hasChanged = updatedSubtasks.length !== vacationSubtasks.length ||
+                                updatedSubtasks.some((task, idx) => {
+                                  const current = vacationSubtasks[idx]
+                                  return !current ||
+                                    task.id !== current.id ||
+                                    task.status !== current.status ||
+                                    JSON.stringify(task.details) !== JSON.stringify(current.details)
+                                })
+                              
+                              if (hasChanged) {
+                                setVacationSubtasks(updatedSubtasks)
+                              }
+                            }}
+                            onCardClick={(subtask) => {
+                              setSelectedBookingDetails(subtask)
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
             {/* Generic Task Expandable Interface - Only when NOT in section */}
             {taskCards.filter(task => 
               expandedCards.includes(task.id) && 
               task.id !== 'store-health' && 
               !task.id.startsWith('store-health-') &&
+              task.id !== 'plan-vacation' &&
               task.id !== 'seo-optimizer' && 
               !task.id.includes('seo') &&
               !getProjectSection(task.id)
             ).map(task => {
               const iconMap: Record<string, React.ComponentType<{ size?: string | number }>> = {
                 'store-health': RiPulseLine,
-                'abandoned-cart': RiNotification3Line,
-                'inventory-mentor': RiUser3Line
+                'plan-vacation': RiPlaneLine
               }
               const TaskIcon = (task.icon || iconMap[task.id] || RiStarFill)
               return (
@@ -1867,176 +2716,7 @@ export default function CanvasLanding() {
                         </div>
                       </div>
 
-                      {/* Smart Shopping Assistant - Shopify Tea Product Interface */}
-                      {task.id === 'abandoned-cart' ? (
-                        <div className="bg-white rounded-lg overflow-hidden">
-                          {/* Navigation breadcrumb */}
-                          <div className="px-4 py-3 bg-gray-50 border-b">
-                            <nav className="flex text-sm text-gray-500">
-                              <span>Home</span>
-                              <span className="mx-2">/</span>
-                              <span className="text-gray-900">Premium Earl Grey Tea</span>
-                            </nav>
-                          </div>
-
-                          {/* Main product section */}
-                          <div className="p-6">
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                              
-                              {/* Product Images - 7 columns */}
-                              <div className="lg:col-span-7">
-                                <div className="space-y-4">
-                                  {/* Main product image */}
-                                  <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                                    <img 
-                                      src="https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=800&h=800&fit=crop&crop=center"
-                                      alt="Premium Earl Grey Tea"
-                                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                                    />
-                                  </div>
-                                  
-                                  {/* Thumbnail images */}
-                                  <div className="grid grid-cols-4 gap-2">
-                                    {[
-                                      'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=200&h=200&fit=crop&crop=center',
-                                      'https://images.unsplash.com/photo-1556881286-56d0de4039b9?w=200&h=200&fit=crop&crop=center',
-                                      'https://images.unsplash.com/photo-1563822249366-221b3b3dcad9?w=200&h=200&fit=crop&crop=center',
-                                      'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=200&h=200&fit=crop&crop=center'
-                                    ].map((src, idx) => (
-                                      <button 
-                                        key={idx} 
-                                        className="aspect-square bg-gray-100 rounded-lg overflow-hidden hover:ring-2 hover:ring-gray-300 transition-all"
-                                      >
-                                        <img src={src} alt={`Product view ${idx + 1}`} className="w-full h-full object-cover" />
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Product Details - 5 columns */}
-                              <div className="lg:col-span-5 space-y-6">
-                                {/* Product title and price */}
-                                <div>
-                                  <h1 className="text-2xl font-bold text-gray-900 mb-2">Premium Earl Grey Tea</h1>
-                                  <p className="text-sm text-gray-600 mb-4">Organic Ceylon black tea with natural bergamot</p>
-                                  <div className="flex items-center gap-4 mb-6">
-                                    <span className="text-2xl font-bold text-gray-900">$24.99</span>
-                                    <span className="text-lg text-gray-500 line-through">$32.99</span>
-                                    <span className="bg-gray-100 text-gray-800 px-2 py-1 text-xs rounded">25% OFF</span>
-                                  </div>
-                                </div>
-
-                                {/* Product options */}
-                                <div className="space-y-4">
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Size</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                      {['50g', '100g', '250g'].map((size, idx) => (
-                                        <button 
-                                          key={size} 
-                                          className={`p-2 border rounded-lg text-sm font-medium transition-colors ${
-                                            idx === 1 ? 'border-gray-800 bg-gray-50' : 'border-gray-300 hover:border-gray-400'
-                                          }`}
-                                        >
-                                          {size}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      {['Loose Leaf', 'Tea Bags'].map((format, idx) => (
-                                        <button 
-                                          key={format} 
-                                          className={`p-2 border rounded-lg text-sm font-medium transition-colors ${
-                                            idx === 0 ? 'border-gray-800 bg-gray-50' : 'border-gray-300 hover:border-gray-400'
-                                          }`}
-                                        >
-                                          {format}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  {/* Quantity */}
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
-                                    <div className="flex items-center border border-gray-300 rounded-lg w-28">
-                                      <button className="p-1 hover:bg-gray-100 transition-colors">-</button>
-                                      <span className="flex-1 text-center py-1 border-x border-gray-300 text-sm">1</span>
-                                      <button className="p-1 hover:bg-gray-100 transition-colors">+</button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Add to cart actions */}
-                                <div className="space-y-3">
-                                  <button className="w-full py-2 text-white bg-gray-900 hover:bg-gray-800 rounded-lg font-medium transition-colors">
-                                    Add to Cart - $24.99
-                                  </button>
-                                  <button className="w-full py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium">
-                                    Buy it now
-                                  </button>
-                                </div>
-
-                                {/* Product highlights */}
-                                <div className="border-t border-gray-200 pt-4">
-                                  <h3 className="font-semibold text-gray-900 mb-3">Product Highlights</h3>
-                                  <ul className="space-y-2 text-sm">
-                                    <li className="flex items-start gap-2">
-                                      <span className="text-gray-400 mt-1">✓</span>
-                                      <span className="text-gray-700">Premium Earl Grey tea blend with bergamot oil</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                      <span className="text-gray-400 mt-1">✓</span>
-                                      <span className="text-gray-700">Hand-picked Ceylon black tea leaves</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                      <span className="text-gray-400 mt-1">✓</span>
-                                      <span className="text-gray-700">Natural bergamot flavoring from Italian citrus</span>
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                {/* Trust indicators */}
-                                <div className="border-t border-gray-200 pt-4 space-y-2 text-sm text-gray-600">
-                                  <div className="flex items-center gap-2">
-                                    <RiTruckLine size={16} className="text-green-600" />
-                                    <span>Free shipping on orders over $50</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <RiArrowGoBackLine size={16} className="text-green-600" />
-                                    <span>30-day return policy</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <RiPlantLine size={16} className="text-green-600" />
-                                    <span>Organic certified & ethically sourced</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Product description */}
-                            <div className="mt-8 pt-6 border-t border-gray-200">
-                              <h2 className="text-xl font-bold text-gray-900 mb-4">Description</h2>
-                              <div className="text-gray-700 space-y-3 text-sm">
-                                <p>
-                                  Experience the timeless elegance of our Premium Earl Grey Tea, carefully crafted from the finest Ceylon black tea leaves 
-                                  and infused with authentic bergamot oil from Italian citrus groves.
-                                </p>
-                                <p>
-                                  Hand-picked at high altitude gardens in Sri Lanka, our tea leaves are processed using traditional methods to preserve 
-                                  their natural character and strength. The addition of cornflower petals adds visual beauty to each cup.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        /* Coming Soon Content for other tasks */
+                      {/* Coming Soon Content for other tasks */}
                       <div className="text-center py-12">
                         <div 
                           className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center"
@@ -2063,7 +2743,6 @@ export default function CanvasLanding() {
                           </div>
                         </div>
                       </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -2391,98 +3070,62 @@ export default function CanvasLanding() {
         </div>
       )}
 
-      {/* Add Task Modal - 60% Viewport Coverage */}
+      {/* Add Task Modal */}
       {showAddTask && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="absolute inset-0" onClick={() => setShowAddTask(false)} />
-          <div 
-            className="relative rounded-lg border border-white/40 backdrop-blur-2xl p-4 shadow-2xl flex flex-col" 
-            style={{ 
-              background: 'rgba(255,255,255,0.95)',
-              width: '50vw',
-              height: '40vh',
-              minWidth: '500px',
-              minHeight: '280px'
-            }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">Choose a Template</h3>
-                <p className="text-xs text-gray-600">Select a pre-built AI agent</p>
-              </div>
-              <button className="p-1 rounded hover:bg-gray-100 text-gray-500" onClick={() => setShowAddTask(false)}>
-                <RiCloseLine size={16} />
+          <div className="absolute inset-0" onClick={cancelCreateTask} />
+          <div className="relative w-full max-w-xl mx-4 rounded-lg border border-white/40 backdrop-blur-2xl p-6 shadow-2xl" style={{ background: 'rgba(255,255,255,0.95)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Create a New Task</h3>
+              <button className="p-1 rounded-lg hover:bg-gray-100 text-gray-500" onClick={cancelCreateTask}>
+                <RiCloseLine size={18} />
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 flex-1">
-                  {TEMPLATES.map(t => {
-                    const TemplateIcon = t.icon;
-                    return (
-                      <button
-                        key={t.id}
-                    className="flex flex-col items-center text-center rounded-lg border border-gray-200 p-2 hover:shadow-md hover:border-gray-300 transition-all duration-200 bg-white group h-full justify-between"
-                        onClick={() => addTemplateTask(t.id)}
-                      >
-                    {/* Icon */}
-                    <div className="mb-2">
-                      <div 
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ backgroundColor: t.iconBg, color: '#374151' }}
-                      >
-                        <TemplateIcon size={16} />
-                      </div>
-                    </div>
-                    
-                    {/* Title */}
-                    <h4 className="font-medium text-gray-900 text-xs mb-1 group-hover:text-gray-700 transition-colors leading-tight">
-                      {t.title}
-                    </h4>
-                    
-                    {/* Features List - Detailed */}
-                    <div className="text-xs text-gray-600 space-y-1 flex-1 flex flex-col justify-center text-left px-2">
-                      {t.id === 'store-health-template' ? (
-                        <>
-                          <div>• Complete store analysis</div>
-                          <div>• Performance optimization</div>
-                          <div>• SEO improvements</div>
-                          <div>• Revenue enhancement tips</div>
-                          <div>• Security vulnerability checks</div>
-                          <div>• Mobile responsiveness audit</div>
-                        </>
-                      ) : t.id === 'abandoned-cart' ? (
-                        <>
-                          <div>• Smart email sequences</div>
-                          <div>• Dynamic discount offers</div>
-                          <div>• Behavioral trigger setup</div>
-                          <div>• Conversion tracking</div>
-                          <div>• A/B test campaigns</div>
-                          <div>• Customer segmentation</div>
-                        </>
-                      ) : (
-                        <>
-                          <div>• AI-powered forecasting</div>
-                          <div>• Automated restock alerts</div>
-                          <div>• Demand trend analysis</div>
-                          <div>• Seasonal planning</div>
-                          <div>• Supplier optimization</div>
-                          <div>• Cost reduction insights</div>
-                        </>
-                      )}
-                    </div>
-                    
-                    {/* Add Button */}
-                    <div className="mt-2 w-full">
-                      <div className="px-2 py-1 bg-gray-100 group-hover:bg-gray-200 text-gray-700 text-xs font-medium rounded text-center transition-colors">
-                        Add
-                      </div>
-                    </div>
-                      </button>
-                    );
-                  })}
-                </div>
-            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Task name</label>
+                <input
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  placeholder="e.g., Plan My Vacation"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newTaskName.trim()) {
+                      handleCreateTask()
+                    }
+                  }}
+                  autoFocus
+                />
+              </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={newTaskDesc}
+                  onChange={(e) => setNewTaskDesc(e.target.value)}
+                  placeholder="Describe what you want to accomplish..."
+                  rows={4}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  onClick={cancelCreateTask}
+                  className="px-6 py-2.5 rounded-lg text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateTask}
+                  disabled={!newTaskName.trim()}
+                  className="px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors font-medium shadow-lg hover:shadow-xl disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Create Task
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2756,17 +3399,42 @@ export default function CanvasLanding() {
                             })}
                                     </span>
                                     {notification.taskId && (
-                                      <button
-                                        onClick={() => {
-                                          zoomToTask(notification.taskId!)
-                                          setShowActionCenter(false)
-                                          // Remove this notification when opening the task
-                                          removeNotification(notification.id!)
-                                        }}
-                                        className="px-2 py-1 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded transition-colors"
-                                      >
-                                        Open Task
-                                      </button>
+                                      <div className="flex gap-2">
+                                        {notification.subtaskId ? (
+                                          <button
+                                            onClick={() => {
+                                              zoomToTask(notification.taskId!)
+                                              setShowActionCenter(false)
+                                              // Ensure right panel is visible
+                                              if (!vacationData?.ready) {
+                                                setVacationData({ ...vacationData || { destination: '', duration: '' }, ready: true })
+                                              }
+                                              // Show right panel with cards and select the specific subtask
+                                              if (notification.subtaskId) {
+                                                const subtask = vacationSubtasks.find(t => t.id === notification.subtaskId)
+                                                if (subtask && subtask.status === 'completed') {
+                                                  setSelectedBookingDetails(subtask)
+                                                }
+                                              }
+                                              removeNotification(notification.id!)
+                                            }}
+                                            className="px-2 py-1 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded transition-colors"
+                                          >
+                                            View Details
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => {
+                                              zoomToTask(notification.taskId!)
+                                              setShowActionCenter(false)
+                                              removeNotification(notification.id!)
+                                            }}
+                                            className="px-2 py-1 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded transition-colors"
+                                          >
+                                            Open Task
+                                          </button>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -2789,6 +3457,72 @@ export default function CanvasLanding() {
           </div>
         </div>
       )}
+
+      {/* Secure Authorization Modal */}
+      <SecureAuthorizationModal
+        isOpen={showAuthorizationModal}
+        packageData={selectedPackage}
+        onAuthorize={() => {
+          // Handle authorization - proceed with vacation planning
+          setShowAuthorizationModal(false)
+          setShowPaymentGateway(false) // Hide payment gateway
+          
+          // Find the vacation task card to update its data
+          const vacationCard = taskCards.find(card => card.id === 'plan-vacation')
+          if (vacationCard && vacationData) {
+            // Update vacation data to trigger agent actions
+            setVacationData({ ...vacationData, ready: true })
+          }
+          
+          // Add notification about authorization
+          addNotification({
+            type: 'info',
+            title: 'Authorization Complete',
+            message: `Payment authorized for ${selectedPackage?.name}. Starting vacation planning...`,
+            actionRequired: false,
+            timestamp: Date.now(),
+            taskId: 'plan-vacation'
+          })
+          
+          // Trigger booking flow in chat
+          setTimeout(() => {
+            if ((window as any).startVacationBooking) {
+              (window as any).startVacationBooking()
+            }
+          }, 500)
+          
+          // Clear selected package after authorization
+          setTimeout(() => {
+            setSelectedPackage(null)
+          }, 1000)
+        }}
+        onSecureHandoff={() => {
+          // Legacy: Open in new window (fallback)
+          window.open('https://checkout.stripe.com', '_blank')
+        }}
+        onSecureHandoffInline={() => {
+          // Show payment gateway inline on the right side
+          setShowPaymentGateway(true)
+          setShowAuthorizationModal(false)
+        }}
+        onOpenInNewTab={() => {
+          // Open payment page in new browser tab
+          if (selectedPackage) {
+            const paymentUrl = `/payment?package=${encodeURIComponent(JSON.stringify(selectedPackage))}`
+            window.open(paymentUrl, '_blank')
+          }
+        }}
+        onShowPackagePreview={() => {
+          // Show package details in browser preview on right side
+          setShowPackagePreview(true)
+        }}
+        onCancel={() => {
+          setShowAuthorizationModal(false)
+          setSelectedPackage(null)
+          setShowPaymentGateway(false)
+          setShowPackagePreview(false)
+        }}
+      />
     </div>
   )
 }

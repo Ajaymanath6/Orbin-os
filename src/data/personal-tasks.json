@@ -1,0 +1,47 @@
+{
+  "tasks": [
+    {
+      "id": "plan-vacation",
+      "title": "Plan My Vacation",
+      "subtitle": "Plan a 7-day trip to Japan: find flights, book hotels, create an itinerary, reserve restaurants, and get travel insurance",
+      "description": "Agents handle research, bookings, and scheduling in parallel",
+      "category": "personal",
+      "subtasks": [
+        "Find flights",
+        "Book hotels",
+        "Create itinerary",
+        "Reserve restaurants",
+        "Get travel insurance"
+      ]
+    },
+    {
+      "id": "plan-wedding",
+      "title": "Plan My Wedding",
+      "subtitle": "Plan my wedding in 6 months: find venues, compare caterers, book photographer, create guest list, design invitations, and set up registry",
+      "description": "Agents handle different aspects in parallel",
+      "category": "personal",
+      "subtasks": [
+        "Find venues",
+        "Compare caterers",
+        "Book photographer",
+        "Create guest list",
+        "Design invitations",
+        "Set up registry"
+      ]
+    },
+    {
+      "id": "learn-skill",
+      "title": "Learn a New Skill",
+      "subtitle": "Learn Spanish: find the best courses, create a study schedule, find conversation partners, set up daily practice reminders, and track progress",
+      "description": "Agents handle research, scheduling, and setup",
+      "category": "personal",
+      "subtasks": [
+        "Find the best courses",
+        "Create a study schedule",
+        "Find conversation partners",
+        "Set up daily practice reminders",
+        "Track progress"
+      ]
+    }
+  ]
+}

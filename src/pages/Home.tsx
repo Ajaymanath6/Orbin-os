@@ -23,15 +23,6 @@ const mockIssues = [
     impact: 'SEO ranking decrease, accessibility issues',
     fixable: true,
     estimatedTime: '30 seconds'
-  },
-  {
-    id: '3',
-    title: 'Smart Shopping Assistant',
-    description: 'No automated email sequence for cart abandonment (68% cart abandonment rate).',
-    severity: 'critical' as const,
-    impact: 'Missing ~$8,500/month in recovered sales',
-    fixable: true,
-    estimatedTime: '5 minutes'
   }
 ]
 

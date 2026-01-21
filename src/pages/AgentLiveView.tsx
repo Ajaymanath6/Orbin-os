@@ -72,7 +72,7 @@ export default function AgentLiveView({ onComplete, onViewStore }: AgentLiveView
       { delay: 500, message: "Initializing Aggo Image Agent...", progress: 5 },
       { delay: 1500, message: "Secure connection to yourstore.shopify.com established.", progress: 10 },
       { delay: 2500, message: "Creating a secure backup of your current theme...", progress: 20, important: true },
-      { delay: 4000, message: "Theme backup 'shopos-backup-2025-01-20.zip' created successfully.", progress: 25 },
+      { delay: 4000, message: "Theme backup 'orbin-backup-2025-01-20.zip' created successfully.", progress: 25 },
       { delay: 5000, message: "Scanning theme files to locate relevant image assets...", progress: 35 },
       { delay: 6500, message: "Located 23 images to optimize in 'product-gallery.liquid'.", progress: 45 },
       { delay: 7500, message: "Applying AI super-resolution and compression models... (This may take a moment)", progress: 55 },
@@ -121,7 +121,7 @@ export default function AgentLiveView({ onComplete, onViewStore }: AgentLiveView
               </h1>
               <div className="w-full">
                 <ShiningText
-                  text="Shopos AI is deploying optimizations to your store. Real-time progress and insights below."
+                  text="Orbin AI is deploying optimizations to your store. Real-time progress and insights below."
                   className="text-2xl text-gray-700 leading-relaxed font-medium"
                 />
               </div>
@@ -192,7 +192,7 @@ export default function AgentLiveView({ onComplete, onViewStore }: AgentLiveView
                   <RiStarFill size={20} className="text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">AI Agent: Shopos AI</h3>
+                  <h3 className="text-lg font-bold text-gray-900">AI Agent: Orbin AI</h3>
                   <p className="text-sm text-gray-600">Image Optimization Specialist</p>
                 </div>
               </div>
