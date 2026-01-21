@@ -131,6 +131,8 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const [showPackages, setShowPackages] = useState(false)
   const [waitingForAuthorization, setWaitingForAuthorization] = useState(false)
   const [pendingPackageData, setPendingPackageData] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const addTypingMessage = useCallback((message: Omit<typeof messages[0], 'id' | 'timestamp' | 'isTyping'> & { statusIndicator?: string }) => {
     const messageId = `${Date.now()}-${Math.random()}`
@@ -1235,6 +1237,43 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           )}
         </div>
       </div>
+
+      {/* Date picker helper when asking for dates */}
+      {currentQuestion === 'dates' && (
+        <div className="px-4 pt-2 pb-1 border-t bg-white" style={{ borderColor: '#E5E7EB' }}>
+          <div className="mb-2 text-xs text-gray-600 font-medium">Select your travel dates</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
+            />
+            <span className="text-xs text-gray-500">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
+            />
+            <button
+              type="button"
+              disabled={!dateFrom || !dateTo}
+              onClick={() => {
+                if (!dateFrom || !dateTo) return
+                const formatted = `${dateFrom} - ${dateTo}`
+                setUserInput(formatted)
+                setDateFrom('')
+                setDateTo('')
+                handleUserAnswer()
+              }}
+              className="px-3 py-1.5 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              Use these dates
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input Field - Always visible */}
       <div className="p-4 border-t bg-white" style={{ borderColor: '#E5E7EB' }}>
