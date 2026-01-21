@@ -129,7 +129,6 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null)
   const [questionAnswers, setQuestionAnswers] = useState<{destination?: string, dates?: string, duration?: string, budget?: string, people?: string, tripType?: string}>({})
   const [showPackages, setShowPackages] = useState(false)
-  const [waitingForAuthorization, setWaitingForAuthorization] = useState(false)
   const [pendingPackageData, setPendingPackageData] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -3670,10 +3669,6 @@ export default function CanvasLanding() {
           setTimeout(() => {
             setSelectedPackage(null)
           }, 1000)
-        }}
-        onSecureHandoff={() => {
-          // Legacy: Open in new window (fallback)
-          window.open('https://checkout.stripe.com', '_blank')
         }}
         onSecureHandoffInline={() => {
           // Show payment gateway inline on the right side

@@ -18,7 +18,6 @@ interface SecureAuthorizationModalProps {
   isOpen: boolean
   packageData: PackageData | null
   onAuthorize: () => void
-  onSecureHandoff: () => void
   onSecureHandoffInline?: () => void
   onOpenInNewTab?: () => void
   onShowPackagePreview?: () => void
@@ -29,7 +28,6 @@ export default function SecureAuthorizationModal({
   isOpen,
   packageData,
   onAuthorize,
-  onSecureHandoff,
   onShowPackagePreview,
   onCancel
 }: SecureAuthorizationModalProps) {
