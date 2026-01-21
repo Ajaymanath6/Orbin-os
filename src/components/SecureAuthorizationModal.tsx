@@ -1,4 +1,4 @@
-import { RiCloseLine, RiShieldCheckLine, RiLockLine, RiBankCardLine, RiArrowRightLine, RiExternalLinkLine, RiEyeLine } from '@remixicon/react'
+import { RiCloseLine, RiShieldCheckLine, RiLockLine, RiBankCardLine, RiEyeLine } from '@remixicon/react'
 
 interface PackageData {
   id: string
@@ -30,8 +30,6 @@ export default function SecureAuthorizationModal({
   packageData,
   onAuthorize,
   onSecureHandoff,
-  onSecureHandoffInline,
-  onOpenInNewTab,
   onShowPackagePreview,
   onCancel
 }: SecureAuthorizationModalProps) {
