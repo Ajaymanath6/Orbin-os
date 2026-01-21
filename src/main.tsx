@@ -4,11 +4,13 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 
-const basename = import.meta.env.PROD ? '/shopos' : ''
-
+// On Vercel the app is served from the domain root,
+// so we don't use a basename here. The previous '/shopos'
+// basename was only needed for GitHub Pages and breaks
+// routing in production on Vercel.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter basename={basename}>
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </StrictMode>,
