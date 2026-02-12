@@ -40,6 +40,7 @@ import { ShiningText } from '../components/ui/shining-text'
 import NotificationBanner from './NotificationBanner'
 import SecureAuthorizationModal from './SecureAuthorizationModal'
 import BookingDetailsView from './BookingDetailsView'
+import findAgentLogo from '../assets/find agent.png'
 
 // Global window interface extension
 declare global {
@@ -110,17 +111,25 @@ interface AIConversationCardProps {
   onSubtaskComplete?: (subtaskId: string, details: any) => void
   onStartBooking?: () => void
   onEmailDataUpdate?: (data: { purpose?: string, recipientCount?: string, rawRecipients?: string, tone?: string, commonContent?: string, ready?: boolean }) => void
+  showUseFindAgentOption?: boolean
+  onEmailFlowQuestionChange?: (question: string | null) => void
+  onUseFindAgent?: () => void
+  findAgentResult?: { status: 'fetching' | 'done'; rows?: { name: string; company: string; email: string }[] }
+  onApplyFindAgentResults?: (rows: { name: string; company: string; email: string }[]) => void
+  injectedEmailRecipients?: string | null
+  onInjectedRecipientsConsumed?: () => void
 }
 
-function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate }: AIConversationCardProps) {
+function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed }: AIConversationCardProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
-    type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user'
+    type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user' | 'findAgentTable'
     content: string
     timestamp: number
     isTyping: boolean
     icon?: React.ComponentType<{ size?: string | number }>
     status?: 'pending' | 'active' | 'completed' | 'failed'
+    payload?: { rows: { name: string; company: string; email: string }[] }
   }>>([])
 
 
@@ -676,6 +685,13 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     }
   }, [isAskingQuestion, onQuestionStateChange])
 
+  // Report current question to parent for send-group-emails (so parent can show Use Find agent option)
+  useEffect(() => {
+    if (expandedCards.includes('send-group-emails') && onEmailFlowQuestionChange) {
+      onEmailFlowQuestionChange(currentQuestion)
+    }
+  }, [expandedCards, currentQuestion, onEmailFlowQuestionChange])
+
   // Sync textarea height when userInput changes (e.g. paste)
   useEffect(() => {
     const ta = textareaRef.current
@@ -684,6 +700,52 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
     }
   }, [userInput])
+
+  // Find agent result: add fetching message or table message
+  const findAgentResultRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!findAgentResult) return
+    const key = `${findAgentResult.status}-${findAgentResult.rows?.length ?? 0}`
+    if (findAgentResultRef.current === key) return
+    findAgentResultRef.current = key
+    if (findAgentResult.status === 'fetching') {
+      const n = questionAnswers.emailCount || '?'
+      addTypingMessage({
+        type: 'result',
+        content: `Fetching contact details for ${n} people from LinkedIn…`,
+        icon: RiMailLine
+      })
+    } else if (findAgentResult.status === 'done' && findAgentResult.rows?.length) {
+      const rows: { name: string; company: string; email: string }[] = findAgentResult.rows as { name: string; company: string; email: string }[]
+      setMessages(prev => [...prev, {
+        id: `find-agent-table-${Date.now()}`,
+        type: 'findAgentTable',
+        content: 'Contact details found.',
+        timestamp: Date.now(),
+        isTyping: false,
+        payload: { rows }
+      }])
+    }
+  }, [findAgentResult, questionAnswers.emailCount, addTypingMessage])
+
+  // Apply injected recipients from Find agent (Use this) and advance to tone question
+  const injectedRecipientsRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!injectedEmailRecipients) {
+      injectedRecipientsRef.current = null
+      return
+    }
+    if (injectedRecipientsRef.current === injectedEmailRecipients) return
+    injectedRecipientsRef.current = injectedEmailRecipients
+    setQuestionAnswers(prev => ({ ...prev, emailRecipients: injectedEmailRecipients }))
+    addTypingMessage({
+      type: 'result',
+      content: "I've captured your recipients. What tone do you want? (e.g., casual, professional, friendly)",
+      icon: RiMailLine
+    })
+    setTimeout(() => setCurrentQuestion('emailTone'), 500)
+    onInjectedRecipientsConsumed?.()
+  }, [injectedEmailRecipients, addTypingMessage, onInjectedRecipientsConsumed])
 
   // Handle booking start trigger from parent
   useEffect(() => {
@@ -1403,6 +1465,36 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
                       <div className="mb-3">
                         <ShiningText text={message.content} className="text-sm leading-relaxed" />
                       </div>
+                    ) : message.type === 'findAgentTable' && message.payload?.rows ? (
+                      <div className="space-y-2">
+                        <div className="overflow-x-auto rounded-lg border border-gray-200 text-xs">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-200">
+                                <th className="text-left py-2 px-2 font-medium text-gray-600">Name</th>
+                                <th className="text-left py-2 px-2 font-medium text-gray-600">Company</th>
+                                <th className="text-left py-2 px-2 font-medium text-gray-600">Email</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {message.payload.rows.map((r, i) => (
+                                <tr key={i} className="border-b border-gray-100">
+                                  <td className="py-1.5 px-2">{r.name}</td>
+                                  <td className="py-1.5 px-2">{r.company}</td>
+                                  <td className="py-1.5 px-2">{r.email}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onApplyFindAgentResults?.(message.payload!.rows)}
+                          className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-medium hover:bg-black"
+                        >
+                          Use this
+                        </button>
+                      </div>
                     ) : (
                       <p className={`text-sm leading-relaxed ${
                         message.isTyping ? 'text-gray-600' : 'text-gray-800'
@@ -1550,6 +1642,21 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         </div>
       </div>
 
+      {/* Use Find agent option - above input when on emailRecipients for send-group-emails */}
+      {showUseFindAgentOption && (
+        <div className="px-4 py-2 border-t bg-gray-50 flex-shrink-0" style={{ borderColor: '#E5E7EB' }}>
+          <p className="text-xs text-gray-600 mb-2">Don&apos;t have contact details? Use an agent to fetch them (e.g. from LinkedIn) for the number you gave.</p>
+          <button
+            type="button"
+            onClick={() => onUseFindAgent?.()}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <img src={findAgentLogo} alt="Find agent" className="w-5 h-5 object-contain" />
+            Use Find agent
+          </button>
+        </div>
+      )}
+
       {/* Input Field - Multi-line textarea that grows upward */}
       <div className="p-4 border-t bg-white flex-shrink-0" style={{ borderColor: '#E5E7EB' }}>
         <style>{`
@@ -1569,7 +1676,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               ta.style.height = 'auto'
               ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
             }}
-            placeholder={isAskingQuestion ? "Type your answer here... (Enter for new line)" : "Type a message or ask a question... (Enter for new line)"}
+            placeholder={isAskingQuestion ? "Type your answer here... (Shift+Enter new line, Enter to send)" : "Type a message or ask a question... (Shift+Enter new line, Enter to send)"}
             rows={1}
             className="chat-input-textarea flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none resize-none min-h-[40px] max-h-[160px]"
             style={{ height: '40px' }}
@@ -1582,7 +1689,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               e.currentTarget.style.boxShadow = 'none'
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 if (userInput.trim()) handleUserAnswer()
               }
@@ -1660,6 +1767,53 @@ export default function CanvasLanding() {
   const [sendEmailAuthorizedAt, setSendEmailAuthorizedAt] = useState<number>(0)
   const [showSendEmailAuthModal, setShowSendEmailAuthModal] = useState(false)
   const [pendingSendCount, setPendingSendCount] = useState(0)
+  const [emailFlowCurrentQuestion, setEmailFlowCurrentQuestion] = useState<string | null>(null)
+  const [findAgentActive, setFindAgentActive] = useState(false)
+  const [findAgentResult, setFindAgentResult] = useState<{ status: 'fetching' | 'done'; rows?: { name: string; company: string; email: string }[] } | null>(null)
+  const [injectedEmailRecipients, setInjectedEmailRecipients] = useState<string | null>(null)
+  const findAgentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleUseFindAgent = useCallback(() => {
+    setFindAgentActive(true)
+    setActiveAgent(prev => ({
+      ...prev,
+      name: 'Find Agent',
+      subheading: 'Finds contact details from LinkedIn and other sources',
+      statusText: 'Fetching contact details…',
+      status: 'analyzing',
+      customLogoSrc: findAgentLogo,
+      useLogo: false
+    }))
+    setFindAgentResult({ status: 'fetching' })
+    const count = Math.min(20, Math.max(1, parseInt(emailFlowData?.recipientCount || '8', 10) || 8))
+    const mockRows = Array.from({ length: count }, (_, i) => ({
+      name: `Contact ${i + 1}`,
+      company: `Company ${String.fromCharCode(65 + (i % 26))}`,
+      email: `contact${i + 1}@company${i + 1}.com`
+    }))
+    if (findAgentTimeoutRef.current) clearTimeout(findAgentTimeoutRef.current)
+    findAgentTimeoutRef.current = setTimeout(() => {
+      setFindAgentResult({ status: 'done', rows: mockRows })
+      setActiveAgent(prev => ({ ...prev, statusText: 'Contacts ready', status: 'completed' }))
+      findAgentTimeoutRef.current = null
+    }, 2500)
+  }, [emailFlowData?.recipientCount])
+
+  const handleApplyFindAgentResults = useCallback((rows: { name: string; company: string; email: string }[]) => {
+    const formatted = rows.map(r => `${r.name} – ${r.company} – ${r.email}`).join('\n')
+    setInjectedEmailRecipients(formatted)
+    setFindAgentActive(false)
+    setFindAgentResult(null)
+    setActiveAgent(prev => ({
+      ...prev,
+      name: 'Orbin AI',
+      subheading: 'Group Email Agent',
+      statusText: 'Ready to send group emails',
+      status: 'ready',
+      customLogoSrc: undefined,
+      useLogo: true
+    }))
+  }, [])
 
   useEffect(() => {
     try {
@@ -1785,6 +1939,7 @@ export default function CanvasLanding() {
     statusText: string
     subheading?: string
     useLogo?: boolean
+    customLogoSrc?: string
   }>({
     name: 'Claude',
     icon: RiStarFill,
@@ -2215,27 +2370,36 @@ export default function CanvasLanding() {
                         >
                           More Options
                         </button>
-                        </div>
+                      </div>
 
-                      {/* Edit and Delete buttons for custom tasks */}
-                      {task.id !== 'store-health' && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={(e) => handleEditClick(task.id, e)}
-                            className="p-2 rounded-full bg-blue-100"
-                            title="Edit task"
+                      <div className="flex items-center gap-2">
+                        {notifications.filter(n => n.taskId === task.id).length > 0 && (
+                          <span
+                            className="min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full text-xs font-medium bg-gray-200 text-gray-700"
+                            title={`${notifications.filter(n => n.taskId === task.id).length} notification(s)`}
                           >
-                            <RiEditLine size={16} className="text-blue-500" />
-                          </button>
-                          <button
-                            onClick={(e) => handleDeleteClick(task.id, e)}
-                            className="p-2 rounded-full bg-red-100"
-                            title="Delete task"
-                          >
-                            <RiDeleteBinLine size={16} className="text-red-500" />
-                          </button>
-                        </div>
-                      )}
+                            {notifications.filter(n => n.taskId === task.id).length}
+                          </span>
+                        )}
+                        {task.id !== 'store-health' && (
+                          <>
+                            <button
+                              onClick={(e) => handleEditClick(task.id, e)}
+                              className="p-2 rounded-full bg-blue-100"
+                              title="Edit task"
+                            >
+                              <RiEditLine size={16} className="text-blue-500" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteClick(task.id, e)}
+                              className="p-2 rounded-full bg-red-100"
+                              title="Delete task"
+                            >
+                              <RiDeleteBinLine size={16} className="text-red-500" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -3002,6 +3166,13 @@ export default function CanvasLanding() {
                         onAddNotification={addNotification}
                         onQuestionStateChange={(isAsking) => setIsAskingEmailQuestions(isAsking)}
                         onEmailDataUpdate={(data) => setEmailFlowData({ ...data, ready: data.ready !== false })}
+                        showUseFindAgentOption={emailFlowCurrentQuestion === 'emailRecipients' && !findAgentActive}
+                        onEmailFlowQuestionChange={setEmailFlowCurrentQuestion}
+                        onUseFindAgent={handleUseFindAgent}
+                        findAgentResult={findAgentResult ?? undefined}
+                        onApplyFindAgentResults={handleApplyFindAgentResults}
+                        injectedEmailRecipients={injectedEmailRecipients}
+                        onInjectedRecipientsConsumed={() => setInjectedEmailRecipients(null)}
                       />
                     </div>
                   </div>

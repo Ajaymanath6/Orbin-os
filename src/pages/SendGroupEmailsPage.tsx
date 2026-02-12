@@ -12,8 +12,6 @@ import {
 
 import { parseRecipients as parseRecipientsUtil, type ParsedRecipient } from '../utils/emailRecipients'
 
-const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
-
 export interface RecipientRow {
   id: string
   name: string
@@ -49,6 +47,17 @@ interface EmailStep {
 
 const STEP_IDS = ['define-recipients', 'draft-base', 'personalize', 'review', 'send-emails'] as const
 const STEP_TITLES = ['Define recipients', 'Draft base email', 'Personalize per client', 'Review & approve', 'Send emails']
+
+const DUMMY_RECIPIENTS: RecipientRow[] = [
+  { id: 'dummy-1', name: 'Contact 1', company: 'Company A', email: 'contact1@company1.com', notes: '', status: 'Ready' },
+  { id: 'dummy-2', name: 'Contact 2', company: 'Company B', email: 'contact2@company2.com', notes: '', status: 'Ready' },
+  { id: 'dummy-3', name: 'Contact 3', company: 'Company C', email: 'contact3@company3.com', notes: '', status: 'Ready' },
+  { id: 'dummy-4', name: 'Contact 4', company: 'Company D', email: 'contact4@company4.com', notes: '', status: 'Ready' },
+  { id: 'dummy-5', name: 'Contact 5', company: 'Company E', email: 'contact5@company5.com', notes: '', status: 'Ready' },
+  { id: 'dummy-6', name: 'Contact 6', company: 'Company F', email: 'contact6@company6.com', notes: '', status: 'Ready' },
+  { id: 'dummy-7', name: 'Contact 7', company: 'Company G', email: 'contact7@company7.com', notes: '', status: 'Ready' },
+  { id: 'dummy-8', name: 'Contact 8', company: 'Company H', email: 'contact8@company8.com', notes: '', status: 'Ready' },
+]
 
 function parseRecipients(raw: string): RecipientRow[] {
   const parsed = parseRecipientsUtil(raw)
@@ -104,13 +113,14 @@ export default function SendGroupEmailsPage({
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number; done: boolean }>({ current: 0, total: 0, done: false })
   const [notesByRecipientId, setNotesByRecipientId] = useState<Record<string, string>>({})
 
-  // Parse recipients when raw data is available
+  // Parse recipients when raw data is available; otherwise use dummy recipients when ready
   useEffect(() => {
-    if (emailFlowData?.rawRecipients) {
-      const parsed = parseRecipients(emailFlowData.rawRecipients)
-      setRecipients(parsed)
+    if (emailFlowData?.rawRecipients?.trim()) {
+      setRecipients(parseRecipients(emailFlowData.rawRecipients))
+    } else if (isReady) {
+      setRecipients((prev) => (prev.length === 0 ? DUMMY_RECIPIENTS.map((r, i) => ({ ...r, id: `dummy-${i}-${Date.now()}` })) : prev))
     }
-  }, [emailFlowData?.rawRecipients])
+  }, [emailFlowData?.rawRecipients, isReady])
 
   // Initial draft: job application template from purpose and commonContent
   useEffect(() => {
@@ -515,11 +525,12 @@ export default function SendGroupEmailsPage({
             {steps[3].status !== 'completed' && (
               <button
                 type="button"
+                disabled={steps[2].status !== 'completed'}
                 onClick={() => {
                   markStepComplete(3)
                   onRequestSend?.(personalized.length)
                 }}
-                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-black"
+                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-900"
               >
                 Authorize & send
               </button>

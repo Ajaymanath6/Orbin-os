@@ -15,6 +15,8 @@ interface AgentStatus {
   statusText: string
   subheading?: string
   useLogo?: boolean
+  /** When set, show this image instead of icon or useLogo (e.g. Find agent logo). */
+  customLogoSrc?: string
 }
 
 interface NotificationBannerProps {
@@ -42,6 +44,13 @@ export default function NotificationBanner({ activeAgent, className = '' }: Noti
         >
           {activeAgent.status === 'analyzing' ? (
             <RiLoader4Fill size={16} className="animate-spin" />
+          ) : activeAgent.customLogoSrc ? (
+            <img
+              src={activeAgent.customLogoSrc}
+              alt={activeAgent.name}
+              className="w-8 h-8 object-contain rounded-lg"
+              style={{ boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)' }}
+            />
           ) : activeAgent.useLogo ? (
             <>
               <img
