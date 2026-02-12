@@ -1,0 +1,11 @@
+{
+  "activityKeywords": {
+    "movie": ["movie", "movies", "film", "ticket", "tickets", "cinema", "show", "booking", "book a movie", "movie tickets"],
+    "restaurant": ["lunch", "dinner", "restaurant", "eat", "food", "dining", "dine", "eat out", "meal", "brunch", "reservation", "lunch reservation", "dinner reservation"],
+    "bowling": ["bowling", "game", "games", "lanes", "nexas", "bowl"]
+  },
+  "donePhrases": ["done", "no", "that's all", "nothing else", "i'm good", "that's it", "no more", "all set", "that's it for now"],
+  "confirmationWords": ["yes", "ok", "okay", "sure", "yeah", "yep", "continue", "next"],
+  "outOfScopePhrases": ["weather", "email", "search", "google", "other task", "send email", "vacation", "trip", "flight", "hotel", "different task"],
+  "dayWords": ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"]
+}

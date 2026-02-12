@@ -44,11 +44,22 @@ import BookingDetailsView from './BookingDetailsView'
 import findAgentLogo from '../assets/find agent.png'
 import genericTaskFlowData from '../data/genericTaskFlow.json'
 import planMyWeekFlowData from '../data/planMyWeekFlow.json'
+import planMyWeekKeywordsData from '../data/planMyWeekKeywords.json'
 import PlanMyWeekPage from '../pages/PlanMyWeekPage'
 import type { PlanMyWeekDay } from '../pages/PlanMyWeekPage'
 import bookmyshowLogo from '../assets/bookmyshow.png'
 import nexasLogo from '../assets/nexas.png'
 import swiggyLogo from '../assets/swiggy.png'
+
+const PLAN_MY_WEEK_AGENT_DURATION_MS = 12000
+
+function buildKeywordRegex(keywords: string[]): RegExp {
+  if (keywords.length === 0) return /^\b$/
+  const escaped = keywords.map((k) =>
+    k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+  )
+  return new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i')
+}
 
 // Global window interface extension
 declare global {
@@ -180,6 +191,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [planMyWeekSuggestedNext, setPlanMyWeekSuggestedNext] = useState<'restaurant' | 'bowling' | null>(null)
+  const [pendingPlanMyWeekBooking, setPendingPlanMyWeekBooking] = useState<{ type: 'movie' | 'restaurant' | 'bowling'; agentId: 'bookmyshow' | 'swiggy' | 'nexas' } | null>(null)
 
   const addTypingMessage = useCallback((message: Omit<typeof messages[0], 'id' | 'timestamp' | 'isTyping'> & { statusIndicator?: string }) => {
     const messageId = `${Date.now()}-${Math.random()}`
@@ -745,7 +757,61 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     } else if (currentQuestion === 'planMyWeek_whatToDo') {
       setQuestionAnswers(updatedAnswers)
       const text = answer.toLowerCase().trim()
-      const isYesOk = /^(yes|ok|okay|sure|yeah|yep|continue|next)$/.test(text)
+      const keywordsData = planMyWeekKeywordsData as {
+        activityKeywords?: Record<string, string[]>
+        donePhrases?: string[]
+        confirmationWords?: string[]
+        outOfScopePhrases?: string[]
+      }
+      const confirmationWords = keywordsData.confirmationWords || ['yes', 'ok', 'okay', 'sure', 'yeah', 'yep', 'continue', 'next']
+      const isYesOk = new RegExp('^(' + confirmationWords.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')$', 'i').test(text)
+      const donePhrases = keywordsData.donePhrases || ["done", "no", "that's all"]
+      const isDone = donePhrases.some((p) => text === p.toLowerCase())
+      const dayMatch = text.match(/\b(saturday|sunday|monday|tuesday|wednesday|thursday|friday)\b/i)
+      const timeMatch = text.match(/\b(\d{1,2}(:\d{2})?\s*(am|pm)?)\b/i)
+
+      if (pendingPlanMyWeekBooking && (dayMatch || timeMatch)) {
+        const pending = pendingPlanMyWeekBooking
+        setPendingPlanMyWeekBooking(null)
+        const dayLabel = dayMatch ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1) : (planMyWeekSuggestions ? 'Saturday' : 'Saturday')
+        const time = timeMatch ? timeMatch[0] : '10:00 am'
+        const title = pending.type === 'movie' ? 'Movie' : pending.type === 'bowling' ? 'Bowling' : 'Lunch/Dinner'
+        const connectingText = pending.agentId === 'bookmyshow' ? 'Connecting with BookMyShow agent' : pending.agentId === 'swiggy' ? 'Connecting with Swiggy agent' : 'Connecting with Nexas agent'
+        addTypingMessage({ type: 'result', content: connectingText, iconSrc: planMyWeekAgentLogos?.[pending.agentId] })
+        onPlanMyWeekAgentChange?.(pending.agentId)
+        onPlanMyWeekBooking?.({ type: pending.type, time, title, dayLabel })
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'result',
+            content: `Added ${title} on ${dayLabel} at ${time}. Anything else? (say another activity or "done")`,
+            icon: RiCheckLine
+          })
+        }, 500)
+        setTimeout(() => {
+          const bookedAfterThis = [...new Set([...(planMyWeekBookedTypes || []), pending.type])]
+          const restaurantAlreadyBooked = bookedAfterThis.includes('restaurant')
+          const bowlingAlreadyBooked = bookedAfterThis.includes('bowling')
+          let followUp: string
+          if (pending.agentId === 'bookmyshow') {
+            followUp = restaurantAlreadyBooked ? 'Your plan is set. Add more anytime or say \'done\'.' : 'Movie tickets done. Continuing to next task – restaurant booking?'
+            if (!restaurantAlreadyBooked) setPlanMyWeekSuggestedNext('restaurant')
+            else setPlanMyWeekSuggestedNext(null)
+          } else if (pending.agentId === 'swiggy') {
+            followUp = bowlingAlreadyBooked ? 'Your plan is set. Add more anytime or say \'done\'.' : 'Restaurant booking done. Continuing to next – bowling?'
+            if (!bowlingAlreadyBooked) setPlanMyWeekSuggestedNext('bowling')
+            else setPlanMyWeekSuggestedNext(null)
+          } else {
+            followUp = 'Bowling registration done. Your plan is set.'
+            setPlanMyWeekSuggestedNext(null)
+          }
+          addTypingMessage({ type: 'result', content: followUp, icon: RiCheckLine })
+        }, PLAN_MY_WEEK_AGENT_DURATION_MS)
+        return
+      }
+      if (pendingPlanMyWeekBooking && !dayMatch && !timeMatch) {
+        setPendingPlanMyWeekBooking(null)
+      }
+
       if (isYesOk && planMyWeekSuggestedNext) {
         if (planMyWeekSuggestedNext === 'restaurant') {
           setPlanMyWeekSuggestedNext(null)
@@ -766,7 +832,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }, 500)
         return
       }
-      if (text === 'done' || text === 'no' || text === 'that\'s all') {
+      if (isDone) {
         setTimeout(() => {
           addTypingMessage({ type: 'result', content: 'Your plan is on the calendar. Add more anytime!', icon: RiCheckLine })
           setIsAskingQuestion(false)
@@ -775,24 +841,32 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }, 500)
         return
       }
-      const dayMatch = text.match(/\b(saturday|sunday|monday|tuesday|wednesday|thursday|friday)\b/i)
-      const timeMatch = text.match(/\b(\d{1,2}(:\d{2})?\s*(am|pm)?)\b/i)
-      const movieKeywords = /\b(movie|movies|film|ticket|tickets|cinema|show)\b/i
-      const restaurantKeywords = /\b(lunch|dinner|restaurant|eat|food|dining|dine|eat out|meal|brunch)\b/i
-      const bowlingKeywords = /\b(bowling|game|games|lanes|nexas)\b/i
+
+      const outOfScopePhrases = keywordsData.outOfScopePhrases || []
+      if (outOfScopePhrases.some((p) => text.includes(p.toLowerCase()))) {
+        setTimeout(() => {
+          addTypingMessage({ type: 'result', content: 'Sorry, for this task I can only help with movies, lunch/dinner, and bowling. What would you like to book?', icon: RiCalendarLine })
+        }, 500)
+        return
+      }
+
+      const activityKeywords = keywordsData.activityKeywords || { movie: ['movie', 'movies', 'film'], restaurant: ['lunch', 'dinner', 'restaurant'], bowling: ['bowling', 'game', 'games'] }
+      const movieRegex = buildKeywordRegex(activityKeywords.movie || [])
+      const restaurantRegex = buildKeywordRegex(activityKeywords.restaurant || [])
+      const bowlingRegex = buildKeywordRegex(activityKeywords.bowling || [])
       let type: 'movie' | 'restaurant' | 'bowling' = 'movie'
       let agentId: 'bookmyshow' | 'swiggy' | 'nexas' = 'bookmyshow'
-      if (movieKeywords.test(text)) {
+      if (movieRegex.test(text)) {
         type = 'movie'
         agentId = 'bookmyshow'
-      } else if (restaurantKeywords.test(text)) {
+      } else if (restaurantRegex.test(text)) {
         type = 'restaurant'
         agentId = 'swiggy'
-      } else if (bowlingKeywords.test(text)) {
+      } else if (bowlingRegex.test(text)) {
         type = 'bowling'
         agentId = 'nexas'
       }
-      const hasActivityKeyword = movieKeywords.test(text) || restaurantKeywords.test(text) || bowlingKeywords.test(text)
+      const hasActivityKeyword = movieRegex.test(text) || restaurantRegex.test(text) || bowlingRegex.test(text)
       if (!hasActivityKeyword) {
         setTimeout(() => {
           addTypingMessage({ type: 'result', content: 'What would you like to book—movie, lunch/dinner, or bowling?', icon: RiCalendarLine })
@@ -802,6 +876,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       const hasDay = !!dayMatch
       const hasTime = !!timeMatch
       if (!hasDay && !hasTime) {
+        setPendingPlanMyWeekBooking({ type, agentId })
         onPlanMyWeekAgentChange?.(agentId)
         setTimeout(() => {
           addTypingMessage({ type: 'result', content: 'Which day and time? (e.g. lunch Sunday 1pm)', icon: RiCalendarLine })
@@ -844,9 +919,9 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           setPlanMyWeekSuggestedNext(null)
         }
         addTypingMessage({ type: 'result', content: followUp, icon: RiCheckLine })
-      }, 6500)
+      }, PLAN_MY_WEEK_AGENT_DURATION_MS)
     }
-  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekSuggestedNext, planMyWeekAgentLogos, planMyWeekBookedTypes])
+  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekSuggestedNext, planMyWeekAgentLogos, planMyWeekBookedTypes, pendingPlanMyWeekBooking])
 
   // Notify parent when question state changes
   useEffect(() => {
@@ -3532,7 +3607,7 @@ export default function CanvasLanding() {
                           }))
                           setTimeout(() => {
                             setActiveAgent(a => ({ ...a, status: 'completed', statusText: 'Done' }))
-                          }, 6000)
+                          }, 12000)
                         }}
                         planMyWeekAgentLogos={{ bookmyshow: bookmyshowLogo, swiggy: swiggyLogo, nexas: nexasLogo }}
                         planMyWeekBookedTypes={Array.from(new Set(planMyWeekData.days.flatMap(d => d.events.map(e => e.type))))}
