@@ -29,7 +29,8 @@ import {
   RiExternalLinkLine,
   RiBankCardLine,
   RiHotelLine,
-  RiMailLine
+  RiMailLine,
+  RiCalendarLine
 } from '@remixicon/react'
 import shopOSLogo from '../assets/orbin logo.svg'
 import LoadingPage from '../pages/LoadingPage'
@@ -42,6 +43,12 @@ import SecureAuthorizationModal from './SecureAuthorizationModal'
 import BookingDetailsView from './BookingDetailsView'
 import findAgentLogo from '../assets/find agent.png'
 import genericTaskFlowData from '../data/genericTaskFlow.json'
+import planMyWeekFlowData from '../data/planMyWeekFlow.json'
+import PlanMyWeekPage from '../pages/PlanMyWeekPage'
+import type { PlanMyWeekDay } from '../pages/PlanMyWeekPage'
+import bookmyshowLogo from '../assets/bookmyshow.png'
+import nexasLogo from '../assets/nexas.png'
+import swiggyLogo from '../assets/swiggy.png'
 
 // Global window interface extension
 declare global {
@@ -121,9 +128,18 @@ interface AIConversationCardProps {
   onInjectedRecipientsConsumed?: () => void
   genericFlowScript?: { welcomeMessage: string; questions: { id: string; text: string }[] }
   onGenericFlowComplete?: (taskId: string) => void
+  planMyWeekSuggestions?: {
+    categories: { id: string; label: string; agentId: string }[]
+    agentMapping: Record<string, { id: string; name: string; icon: string; subheading: string }>
+    defaultSuggestions: { somethingFun: string; weekend: string; prompts: string[] }
+  }
+  onPlanMyWeekBooking?: (payload: { type: 'movie' | 'restaurant' | 'bowling'; time: string; title: string; dayLabel: string }) => void
+  onPlanMyWeekAgentChange?: (agentId: 'bookmyshow' | 'swiggy' | 'nexas') => void
+  onPlanMyWeekModeChange?: (mode: 'week' | 'weekend') => void
+  planMyWeekAgentLogos?: Record<string, string>
 }
 
-function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed, genericFlowScript, onGenericFlowComplete }: AIConversationCardProps) {
+function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed, genericFlowScript, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekAgentLogos }: AIConversationCardProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
     type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user' | 'findAgentTable'
@@ -131,6 +147,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     timestamp: number
     isTyping: boolean
     icon?: React.ComponentType<{ size?: string | number }>
+    iconSrc?: string
     status?: 'pending' | 'active' | 'completed' | 'failed'
     payload?: { rows: { name: string; company: string; email: string }[] }
   }>>([])
@@ -161,6 +178,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const [pendingPackageData, setPendingPackageData] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [planMyWeekSuggestedNext, setPlanMyWeekSuggestedNext] = useState<'restaurant' | 'bowling' | null>(null)
 
   const addTypingMessage = useCallback((message: Omit<typeof messages[0], 'id' | 'timestamp' | 'isTyping'> & { statusIndicator?: string }) => {
     const messageId = `${Date.now()}-${Math.random()}`
@@ -709,8 +727,103 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           }
         }, 3000)
       }, 500)
+    } else if (currentQuestion === 'planMyWeek_weekOrWeekend') {
+      const a = answer.toLowerCase().trim()
+      const mode: 'week' | 'weekend' = (a.includes('week') && !a.includes('weekend')) ? 'week' : 'weekend'
+      onPlanMyWeekModeChange?.(mode)
+      setQuestionAnswers(updatedAnswers)
+      const suggestions = planMyWeekSuggestions?.defaultSuggestions?.somethingFun
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: suggestions || 'What would you like to do? (e.g. movie Saturday 10am, lunch Sunday 1pm, bowling Saturday 4pm)',
+          icon: RiCalendarLine
+        })
+        setTimeout(() => setCurrentQuestion('planMyWeek_whatToDo'), 2500)
+      }, 500)
+    } else if (currentQuestion === 'planMyWeek_whatToDo') {
+      setQuestionAnswers(updatedAnswers)
+      const text = answer.toLowerCase().trim()
+      const isYesOk = /^(yes|ok|okay|sure|yeah|yep|continue|next)$/.test(text)
+      if (isYesOk && planMyWeekSuggestedNext) {
+        if (planMyWeekSuggestedNext === 'restaurant') {
+          setPlanMyWeekSuggestedNext(null)
+          setTimeout(() => {
+            addTypingMessage({ type: 'result', content: 'Great! When and which day for lunch or dinner? (e.g. lunch Sunday 1pm)', icon: RiCalendarLine })
+          }, 500)
+        } else if (planMyWeekSuggestedNext === 'bowling') {
+          setPlanMyWeekSuggestedNext(null)
+          setTimeout(() => {
+            addTypingMessage({ type: 'result', content: 'Great! When and which day for bowling? (e.g. bowling Saturday 4pm)', icon: RiCalendarLine })
+          }, 500)
+        }
+        return
+      }
+      if (isYesOk && !planMyWeekSuggestedNext) {
+        setTimeout(() => {
+          addTypingMessage({ type: 'result', content: 'Which day and time? (e.g. lunch Sunday 1pm or bowling Saturday 4pm)', icon: RiCalendarLine })
+        }, 500)
+        return
+      }
+      if (text === 'done' || text === 'no' || text === 'that\'s all') {
+        setTimeout(() => {
+          addTypingMessage({ type: 'result', content: 'Your plan is on the calendar. Add more anytime!', icon: RiCheckLine })
+          setIsAskingQuestion(false)
+          setCurrentQuestion(null)
+          if (onQuestionStateChange) onQuestionStateChange(false)
+        }, 500)
+        return
+      }
+      const dayMatch = text.match(/\b(saturday|sunday|monday|tuesday|wednesday|thursday|friday)\b/i)
+      const timeMatch = text.match(/\b(\d{1,2}(:\d{2})?\s*(am|pm)?)\b/i)
+      let type: 'movie' | 'restaurant' | 'bowling' = 'movie'
+      let agentId: 'bookmyshow' | 'swiggy' | 'nexas' = 'bookmyshow'
+      if (/\b(movie|movies|film)\b/i.test(text)) {
+        type = 'movie'
+        agentId = 'bookmyshow'
+      } else if (/\b(lunch|dinner|restaurant|eat|food)\b/i.test(text)) {
+        type = 'restaurant'
+        agentId = 'swiggy'
+      } else if (/\b(bowling|game|games)\b/i.test(text)) {
+        type = 'bowling'
+        agentId = 'nexas'
+      }
+      const hasDay = !!dayMatch
+      const hasTime = !!timeMatch
+      if (!hasDay && !hasTime) {
+        setTimeout(() => {
+          addTypingMessage({ type: 'result', content: 'Which day and time? (e.g. lunch Sunday 1pm)', icon: RiCalendarLine })
+        }, 500)
+        return
+      }
+      const dayLabel = dayMatch ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1) : (planMyWeekSuggestions ? 'Saturday' : 'Saturday')
+      const time = timeMatch ? timeMatch[0] : '10:00 am'
+      const title = answer.trim() || (type === 'movie' ? 'Movie' : type === 'bowling' ? 'Bowling' : 'Lunch/Dinner')
+      const connectingText = agentId === 'bookmyshow' ? 'Connecting with BookMyShow agent' : agentId === 'swiggy' ? 'Connecting with Swiggy agent' : 'Connecting with Nexas agent'
+      addTypingMessage({ type: 'result', content: connectingText, iconSrc: planMyWeekAgentLogos?.[agentId] })
+      onPlanMyWeekAgentChange?.(agentId)
+      onPlanMyWeekBooking?.({ type, time, title, dayLabel })
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Added ${title} on ${dayLabel} at ${time}. Anything else? (say another activity or "done")`,
+          icon: RiCheckLine
+        })
+      }, 500)
+      setTimeout(() => {
+        const followUp =
+          agentId === 'bookmyshow'
+            ? 'Movie tickets done. Continuing to next task – restaurant booking?'
+            : agentId === 'swiggy'
+              ? 'Restaurant booking done. Continuing to next – bowling?'
+              : 'Bowling registration done. Your plan is set.'
+        addTypingMessage({ type: 'result', content: followUp, icon: RiCheckLine })
+        if (agentId === 'bookmyshow') setPlanMyWeekSuggestedNext('restaurant')
+        else if (agentId === 'swiggy') setPlanMyWeekSuggestedNext('bowling')
+        else setPlanMyWeekSuggestedNext(null)
+      }, 6500)
     }
-  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete])
+  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekSuggestedNext, planMyWeekAgentLogos])
 
   // Notify parent when question state changes
   useEffect(() => {
@@ -1058,9 +1171,10 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
 
   const startAIConversation = useCallback((task: TaskCard) => {
     // Initial greeting based on task type with structured framework
-    const greetings = {
+    const greetings: Record<string, string> = {
       'plan-vacation': "Hello! I'm your vacation planning assistant. I'll help you plan an amazing trip! Let me ask you a few questions to get started.",
       'send-group-emails': "Hello! I'm your group email assistant. I'll help you send personalized emails to multiple recipients. Let me ask you a few questions.",
+      'plan-my-week': "Hello! I'm your week planning assistant. I'll help you plan movies, dining, and bowling. Let me ask you a couple of questions.",
       'store-health': "Hello! I'm your intelligent AI agent for Store Health Check. Let's break down what we'll accomplish together.",
       'seo': "Hello! I'm your intelligent AI agent for SEO Analysis. Let's approach this systematically.",
       'performance': "Hello! I'm your intelligent AI agent for Performance Optimization. Let's think through this step by step.",
@@ -1070,6 +1184,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
 
     const taskType = task.id === 'plan-vacation' ? 'plan-vacation' :
                     task.id === 'send-group-emails' ? 'send-group-emails' :
+                    task.id === 'plan-my-week' ? 'plan-my-week' :
                     task.id.includes('health') ? 'store-health' :
                     task.id.includes('seo') ? 'seo' :
                     task.id.includes('performance') ? 'performance' :
@@ -1081,7 +1196,9 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     // Message 0: Shining Text Summary (Shows first, then disappears)
     const summaryContent = taskType === 'send-group-emails'
       ? `I'm Orbin AI, your group email assistant. I'll help you define recipients, draft a base email, personalize per client, and send—all in one workspace.`
-      : taskType === 'default'
+      : taskType === 'plan-my-week'
+        ? `I'm Orbin AI, your week planning assistant. I'll help you plan movies, dining, and bowling—just tell me week or weekend and what you'd like to do.`
+        : taskType === 'default'
         ? `I'm Orbin AI, your assistant for ${task.title}. I'll ask a few questions to get started.`
         : `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`
     setTimeout(() => {
@@ -1142,6 +1259,22 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           type: 'thinking',
           content: "What is this email about? (e.g., feature launch update, pricing change, check-in after demo)",
           icon: RiMailLine,
+          statusIndicator: 'ORBIN_THINKING'
+        })
+      }, messageDelay)
+      return
+    }
+
+    // Plan my week flow – week or weekend, then suggestions
+    if (taskType === 'plan-my-week') {
+      setTimeout(() => {
+        setIsAskingQuestion(true)
+        setCurrentQuestion('planMyWeek_weekOrWeekend')
+        if (onQuestionStateChange) onQuestionStateChange(true)
+        addTypingMessage({
+          type: 'thinking',
+          content: 'Planning a full week or just the weekend?',
+          icon: RiCalendarLine,
           statusIndicator: 'ORBIN_THINKING'
         })
       }, messageDelay)
@@ -1253,7 +1386,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }))
       }, 4000) // Wait for status + typing to complete
     }, messageDelay)
-  }, [addTypingMessage, onAutoEnterUrl, onAutoStartScan, onVacationDataUpdate, genericFlowScript, onQuestionStateChange, onGenericFlowComplete])
+  }, [addTypingMessage, onAutoEnterUrl, onAutoStartScan, onVacationDataUpdate, genericFlowScript, onQuestionStateChange, onGenericFlowComplete, planMyWeekSuggestions])
 
   const [scanningMessageShown, setScanningMessageShown] = useState(false)
   const [completionMessageShown, setCompletionMessageShown] = useState(false)
@@ -1517,11 +1650,15 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               return (
                 <div key={message.id} className={`flex items-start gap-3 animate-fadeIn ${isUserMessage ? 'flex-row-reverse' : ''}`}>
                   <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-                    <IconComponent 
-                      size={14} 
-                      style={iconStyle} 
-                      className={IconComponent === RiLoader4Fill ? 'animate-spin' : ''}
-                    />
+                    {message.iconSrc ? (
+                      <img src={message.iconSrc} alt="" className="w-4 h-4 object-contain" />
+                    ) : (
+                      <IconComponent 
+                        size={14} 
+                        style={iconStyle} 
+                        className={IconComponent === RiLoader4Fill ? 'animate-spin' : ''}
+                      />
+                    )}
                   </div>
                   <div className={`flex-1 min-w-0 ${isUserMessage ? 'text-right' : ''}`}>
                     {message.type === 'summary' ? (
@@ -1739,7 +1876,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               ta.style.height = 'auto'
               ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
             }}
-            placeholder={isAskingQuestion ? "Type your answer here... (Shift+Enter new line, Enter to send)" : "Type a message or ask a question... (Shift+Enter new line, Enter to send)"}
+            placeholder={isAskingQuestion ? "Type your answer" : "Type your message"}
             rows={1}
             className="chat-input-textarea flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none resize-none min-h-[40px] max-h-[160px]"
             style={{ height: '40px' }}
@@ -1793,6 +1930,13 @@ const DEFAULT_TASKS: TaskCard[] = [
     subtitle: 'Send personalized emails to multiple clients: define recipients, draft a base email, personalize per client, review, and send',
     icon: RiMailLine,
     iconBg: DARK_PALETTE.tertiary
+  },
+  {
+    id: 'plan-my-week',
+    title: 'Plan my week',
+    subtitle: 'Plan the weekend or the full week: movies, dining, bowling and more',
+    icon: RiCalendarLine,
+    iconBg: DARK_PALETTE.tertiary
   }
 ]
 
@@ -1836,8 +1980,21 @@ export default function CanvasLanding() {
   const [injectedEmailRecipients, setInjectedEmailRecipients] = useState<string | null>(null)
   const findAgentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [customTaskRightPanelReady, setCustomTaskRightPanelReady] = useState<Record<string, boolean>>({})
+  const [planMyWeekData, setPlanMyWeekData] = useState<{ mode: 'week' | 'weekend'; days: PlanMyWeekDay[] }>({
+    mode: 'weekend',
+    days: [
+      { date: '', label: 'Saturday', events: [] },
+      { date: '', label: 'Sunday', events: [] }
+    ]
+  })
+  const [planMyWeekUsedAgents, setPlanMyWeekUsedAgents] = useState<('bookmyshow' | 'swiggy' | 'nexas')[]>([])
 
   const genericFlowScript = genericTaskFlowData as { welcomeMessage: string; questions: { id: string; text: string }[] }
+  const planMyWeekSuggestions = planMyWeekFlowData as {
+    categories: { id: string; label: string; agentId: string }[]
+    agentMapping: Record<string, { id: string; name: string; icon: string; subheading: string }>
+    defaultSuggestions: { somethingFun: string; weekend: string; prompts: string[] }
+  }
 
   const handleUseFindAgent = useCallback(() => {
     setFindAgentActive(true)
@@ -2247,6 +2404,21 @@ export default function CanvasLanding() {
         setExpandedCards(prev => [...prev, taskId])
         // Clear notifications when opening a new task
         setNotifications([])
+      }
+    } else if (taskId === 'plan-my-week') {
+      if (!expandedCards.includes(taskId)) {
+        setExpandedCards(prev => [...prev, taskId])
+        setNotifications([])
+        setPlanMyWeekUsedAgents([])
+        setActiveAgent(prev => ({
+          ...prev,
+          name: 'Orbin AI',
+          statusText: 'Ready to plan your week',
+          subheading: 'Week / Weekend Planning Agent',
+          status: 'ready',
+          useLogo: false,
+          customLogoSrc: undefined
+        }))
       }
     } else {
       // Handle other custom tasks - they'll show a basic interface
@@ -3275,6 +3447,139 @@ export default function CanvasLanding() {
               </div>
             ))}
 
+            {/* Plan my week Expandable Interface */}
+            {expandedCards.includes('plan-my-week') && !getProjectSection('plan-my-week') && (
+              <div
+                className={`transition-all duration-300 ${sectionMode ? 'cursor-pointer' : ''} ${selectedProjects.includes('plan-my-week') ? 'border-2 border-dashed border-gray-600' : ''}`}
+                style={{ width: '1440px', minWidth: '1440px', flexShrink: 0, marginBottom: '50px' }}
+                onClick={() => handleProjectSelection('plan-my-week')}
+              >
+                <div className="text-left mb-6 relative">
+                  <h1 className="text-3xl font-bold mb-2 text-gray-900">Plan my week</h1>
+                  <p className="text-lg text-gray-600">Plan the weekend or full week: movies, dining, bowling</p>
+                </div>
+                <div className="flex gap-6">
+                  <div className="flex-shrink-0 space-y-4 transition-all duration-300" style={{ width: '320px' }}>
+                    <div style={{ height: '500px' }}>
+                      <AIConversationCard
+                        taskCards={taskCards}
+                        expandedCards={['plan-my-week']}
+                        scanProgress={scanProgress}
+                        isScanning={false}
+                        onAddNotification={addNotification}
+                        planMyWeekSuggestions={planMyWeekSuggestions}
+                        onPlanMyWeekModeChange={(mode) => {
+                          setPlanMyWeekData(() => ({
+                            mode,
+                            days: mode === 'weekend'
+                              ? [{ date: '', label: 'Saturday', events: [] }, { date: '', label: 'Sunday', events: [] }]
+                              : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(l => ({ date: '', label: l, events: [] }))
+                          }))
+                        }}
+                        onPlanMyWeekBooking={(payload) => {
+                          const agentId: 'bookmyshow' | 'swiggy' | 'nexas' = payload.type === 'movie' ? 'bookmyshow' : payload.type === 'bowling' ? 'nexas' : 'swiggy'
+                          setPlanMyWeekUsedAgents(prev => (prev.includes(agentId) ? prev : [...prev, agentId]))
+                          setPlanMyWeekData(prev => {
+                            const dayLabel = payload.dayLabel || (prev.mode === 'weekend' ? 'Saturday' : prev.days[0]?.label)
+                            const days = prev.days.map(d =>
+                              d.label.toLowerCase().includes(dayLabel.toLowerCase())
+                                ? { ...d, events: [...d.events, { time: payload.time, title: payload.title, type: payload.type, agentId }] }
+                                : d
+                            )
+                            if (days.every(d => d.label.toLowerCase() !== dayLabel.toLowerCase())) {
+                              const first = prev.days[0]
+                              if (first) days[0] = { ...first, events: [...first.events, { time: payload.time, title: payload.title, type: payload.type, agentId }] }
+                            }
+                            return { ...prev, days }
+                          })
+                        }}
+                        onPlanMyWeekAgentChange={(agentId) => {
+                          const logos: Record<string, string> = { bookmyshow: bookmyshowLogo, swiggy: swiggyLogo, nexas: nexasLogo }
+                          const names: Record<string, string> = { bookmyshow: 'BookMyShow', swiggy: 'Swiggy', nexas: 'Nexas' }
+                          const subheadings: Record<string, string> = { bookmyshow: 'Movie tickets', swiggy: 'Restaurant booking', nexas: 'Bowling registration' }
+                          setActiveAgent(prev => ({
+                            ...prev,
+                            name: names[agentId] || agentId,
+                            subheading: subheadings[agentId] || '',
+                            statusText: 'Booking...',
+                            status: 'analyzing',
+                            customLogoSrc: logos[agentId]
+                          }))
+                          setTimeout(() => {
+                            setActiveAgent(a => ({ ...a, status: 'completed', statusText: 'Done' }))
+                          }, 6000)
+                        }}
+                        planMyWeekAgentLogos={{ bookmyshow: bookmyshowLogo, swiggy: swiggyLogo, nexas: nexasLogo }}
+                      />
+                    </div>
+                    <div
+                      className="rounded-2xl p-4 border border-white/40 backdrop-blur-xl"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        backdropFilter: 'blur(25px)',
+                        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.3)'
+                      }}
+                    >
+                      <div className="text-center mb-3">
+                        <h4 className="text-sm font-semibold text-gray-800">AI Agents Used</h4>
+                        <p className="text-xs text-gray-600">Movies, dining, bowling</p>
+                      </div>
+                      <div className="flex justify-center gap-4">
+                        {planMyWeekUsedAgents.map(agentId => {
+                          const logos: Record<string, string> = { bookmyshow: bookmyshowLogo, swiggy: swiggyLogo, nexas: nexasLogo }
+                          const src = logos[agentId]
+                          return (
+                            <div key={agentId} className="flex flex-col items-center">
+                              <div className="w-10 h-10 flex items-center justify-center shadow-sm border border-white/30 overflow-hidden rounded-lg bg-white">
+                                <img src={src} alt={agentId} className="w-6 h-6 object-contain" />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className={`flex-1 transition-all duration-300 ${planMyWeekData.days.some(d => d.events.length > 0) ? '' : 'flex-none'}`}
+                    style={{
+                      width: planMyWeekData.days.some(d => d.events.length > 0) ? 'auto' : '0px',
+                      overflow: planMyWeekData.days.some(d => d.events.length > 0) ? 'visible' : 'hidden'
+                    }}
+                  >
+                    {planMyWeekData.days.some(d => d.events.length > 0) && (
+                      <>
+                        <div className="w-full mb-4">
+                          <NotificationBanner activeAgent={activeAgent} />
+                        </div>
+                        <div
+                          className="rounded-lg shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden"
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.95)',
+                            backdropFilter: 'blur(25px)',
+                            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.3)',
+                            minHeight: 'auto'
+                          }}
+                        >
+                          <div className="p-6">
+                            <PlanMyWeekPage
+                              mode={planMyWeekData.mode}
+                              days={planMyWeekData.days}
+                              onAgentActive={(agentId) => {
+                                const logos: Record<string, string> = { bookmyshow: bookmyshowLogo, swiggy: swiggyLogo, nexas: nexasLogo }
+                                const names: Record<string, string> = { bookmyshow: 'BookMyShow', swiggy: 'Swiggy', nexas: 'Nexas' }
+                                const subheadings: Record<string, string> = { bookmyshow: 'Movie tickets', swiggy: 'Restaurant booking', nexas: 'Bowling registration' }
+                                setActiveAgent(prev => ({ ...prev, name: names[agentId] || agentId, subheading: subheadings[agentId] || '', customLogoSrc: logos[agentId] }))
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Generic Task Expandable Interface - Chat first, then right panel after 5 Q&As */}
             {taskCards.filter(task => 
               expandedCards.includes(task.id) && 
@@ -3282,6 +3587,7 @@ export default function CanvasLanding() {
               !task.id.startsWith('store-health-') &&
               task.id !== 'plan-vacation' &&
               task.id !== 'send-group-emails' &&
+              task.id !== 'plan-my-week' &&
               task.id !== 'seo-optimizer' && 
               !task.id.includes('seo') &&
               !getProjectSection(task.id)

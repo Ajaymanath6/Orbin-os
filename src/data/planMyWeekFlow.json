@@ -1,0 +1,24 @@
+{
+  "categories": [
+    { "id": "movies", "label": "Movies", "agentId": "bookmyshow" },
+    { "id": "dinner", "label": "Dinner", "agentId": "swiggy" },
+    { "id": "lunch", "label": "Lunch", "agentId": "swiggy" },
+    { "id": "games", "label": "Bowling / Games", "agentId": "nexas" }
+  ],
+  "agentMapping": {
+    "movies": { "id": "bookmyshow", "name": "BookMyShow", "icon": "bookmyshow.png", "subheading": "Movie tickets" },
+    "dinner": { "id": "swiggy", "name": "Swiggy", "icon": "swiggy.png", "subheading": "Restaurant booking" },
+    "lunch": { "id": "swiggy", "name": "Swiggy", "icon": "swiggy.png", "subheading": "Restaurant booking" },
+    "games": { "id": "nexas", "name": "Nexas", "icon": "nexas.png", "subheading": "Bowling registration" }
+  },
+  "defaultSuggestions": {
+    "somethingFun": "How about a movie, lunch at a nice spot, and bowling? I can help you book each.",
+    "weekend": "For the weekend we could do: Saturday – movie in the morning, lunch; Sunday – bowling, dinner.",
+    "prompts": [
+      "I need something fun",
+      "Suggest activities for the weekend",
+      "Book a movie and dinner",
+      "Add bowling to my plan"
+    ]
+  }
+}
