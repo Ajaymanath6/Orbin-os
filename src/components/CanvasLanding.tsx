@@ -28,11 +28,14 @@ import {
   RiLockLine,
   RiExternalLinkLine,
   RiBankCardLine,
-  RiHotelLine
+  RiHotelLine,
+  RiMailLine
 } from '@remixicon/react'
 import shopOSLogo from '../assets/orbin logo.svg'
 import LoadingPage from '../pages/LoadingPage'
 import PlanVacationPage from '../pages/PlanVacationPage'
+import SendGroupEmailsPage from '../pages/SendGroupEmailsPage'
+import { parseRecipients } from '../utils/emailRecipients'
 import { ShiningText } from '../components/ui/shining-text'
 import NotificationBanner from './NotificationBanner'
 import SecureAuthorizationModal from './SecureAuthorizationModal'
@@ -106,9 +109,10 @@ interface AIConversationCardProps {
   onPackageSelect?: (packageData: {id: string, name: string, price: string, highlights: string[]}) => void
   onSubtaskComplete?: (subtaskId: string, details: any) => void
   onStartBooking?: () => void
+  onEmailDataUpdate?: (data: { purpose?: string, recipientCount?: string, rawRecipients?: string, tone?: string, commonContent?: string, ready?: boolean }) => void
 }
 
-function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking }: AIConversationCardProps) {
+function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate }: AIConversationCardProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
     type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user'
@@ -124,10 +128,23 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
   const [showSkeleton, setShowSkeleton] = useState(true)
   const initializedTaskIdRef = useRef<string | null>(null)
   const conversationStartedRef = useRef<boolean>(false)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [userInput, setUserInput] = useState('')
   const [isAskingQuestion, setIsAskingQuestion] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null)
-  const [questionAnswers, setQuestionAnswers] = useState<{destination?: string, dates?: string, duration?: string, budget?: string, people?: string, tripType?: string}>({})
+  const [questionAnswers, setQuestionAnswers] = useState<{
+    destination?: string
+    dates?: string
+    duration?: string
+    budget?: string
+    people?: string
+    tripType?: string
+    emailPurpose?: string
+    emailCount?: string
+    emailRecipients?: string
+    emailTone?: string
+    emailCommonContent?: string
+  }>({})
   const [showPackages, setShowPackages] = useState(false)
   const [pendingPackageData, setPendingPackageData] = useState<{id: string, name: string, price: string, highlights: string[]} | null>(null)
   const [dateFrom, setDateFrom] = useState('')
@@ -334,6 +351,29 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }
         return { valid: true }
       }
+      case 'emailPurpose': {
+        if (trimmed.length < 3 || !/[a-zA-Z]/.test(trimmed)) {
+          return { valid: false, error: 'Please describe what the email is about (e.g., feature launch, pricing change).' }
+        }
+        return { valid: true }
+      }
+      case 'emailCount': {
+        const n = parseInt(trimmed, 10)
+        if (Number.isNaN(n) || n < 1 || n > 20) {
+          return { valid: false, error: 'Please enter a number between 1 and 20.' }
+        }
+        return { valid: true }
+      }
+      case 'emailRecipients': {
+        const hasEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(trimmed)
+        if (!hasEmail || trimmed.length < 10) {
+          return { valid: false, error: 'Please paste at least one line with an email (e.g. Name – Company – email@company.com).' }
+        }
+        return { valid: true }
+      }
+      case 'emailTone':
+      case 'emailCommonContent':
+        return { valid: true }
       default:
         return { valid: true }
     }
@@ -554,8 +594,80 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           }
         }, 4000)
       }, 500)
+    } else if (currentQuestion === 'emailPurpose') {
+      setQuestionAnswers(updatedAnswers)
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: `Got it — I'll use this to build a draft you can edit. How many people are you sending this to? (e.g., 8)`,
+          icon: RiMailLine
+        })
+        setTimeout(() => setCurrentQuestion('emailCount'), 3000)
+      }, 500)
+    } else if (currentQuestion === 'emailCount') {
+      setQuestionAnswers(updatedAnswers)
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: "Paste or enter their details (name, company, email). You can paste from a spreadsheet or write: Alice – Acme Corp – alice@acme.com",
+          icon: RiMailLine
+        })
+        setTimeout(() => setCurrentQuestion('emailRecipients'), 3000)
+      }, 500)
+    } else if (currentQuestion === 'emailRecipients') {
+      setQuestionAnswers(updatedAnswers)
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: "I've captured your recipients. What tone do you want? (e.g., casual, professional, friendly)",
+          icon: RiMailLine
+        })
+        setTimeout(() => setCurrentQuestion('emailTone'), 3000)
+      }, 500)
+    } else if (currentQuestion === 'emailTone') {
+      setQuestionAnswers(updatedAnswers)
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: "Anything that must appear in every email? (e.g., link to portfolio, deadline, promo code)",
+          icon: RiMailLine
+        })
+        setTimeout(() => setCurrentQuestion('emailCommonContent'), 3000)
+      }, 500)
+    } else if (currentQuestion === 'emailCommonContent') {
+      setQuestionAnswers(updatedAnswers)
+      const raw = updatedAnswers.emailRecipients || ''
+      const list = parseRecipients(raw)
+      const recipientLines = list.length > 0
+        ? list.map((r, i) => `${i + 1}. ${r.name || '—'} – ${r.company || '—'} – ${r.email || '—'}`).join('\n')
+        : ''
+      const confirmationBody = list.length > 0
+        ? `Perfect. Let me prepare your outreach workspace and draft the emails for you.\n\nRecipients (${list.length}):\n${recipientLines}`
+        : "Perfect. Let me prepare your outreach workspace and draft the emails for you. (No recipients parsed – you can add them in the workspace.)"
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'result',
+          content: confirmationBody,
+          icon: RiMailLine
+        })
+        setTimeout(() => {
+          setIsAskingQuestion(false)
+          setCurrentQuestion(null)
+          if (onQuestionStateChange) onQuestionStateChange(false)
+          if (onEmailDataUpdate) {
+            onEmailDataUpdate({
+              purpose: updatedAnswers.emailPurpose,
+              recipientCount: updatedAnswers.emailCount,
+              rawRecipients: updatedAnswers.emailRecipients,
+              tone: updatedAnswers.emailTone,
+              commonContent: updatedAnswers.emailCommonContent,
+              ready: true
+            })
+          }
+        }, 3000)
+      }, 500)
     }
-  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete])
+  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate])
 
   // Notify parent when question state changes
   useEffect(() => {
@@ -563,6 +675,15 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       onQuestionStateChange(isAskingQuestion)
     }
   }, [isAskingQuestion, onQuestionStateChange])
+
+  // Sync textarea height when userInput changes (e.g. paste)
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (ta) {
+      ta.style.height = 'auto'
+      ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
+    }
+  }, [userInput])
 
   // Handle booking start trigger from parent
   useEffect(() => {
@@ -843,6 +964,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     // Initial greeting based on task type with structured framework
     const greetings = {
       'plan-vacation': "Hello! I'm your vacation planning assistant. I'll help you plan an amazing trip! Let me ask you a few questions to get started.",
+      'send-group-emails': "Hello! I'm your group email assistant. I'll help you send personalized emails to multiple recipients. Let me ask you a few questions.",
       'store-health': "Hello! I'm your intelligent AI agent for Store Health Check. Let's break down what we'll accomplish together.",
       'seo': "Hello! I'm your intelligent AI agent for SEO Analysis. Let's approach this systematically.",
       'performance': "Hello! I'm your intelligent AI agent for Performance Optimization. Let's think through this step by step.",
@@ -851,6 +973,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     }
 
     const taskType = task.id === 'plan-vacation' ? 'plan-vacation' :
+                    task.id === 'send-group-emails' ? 'send-group-emails' :
                     task.id.includes('health') ? 'store-health' :
                     task.id.includes('seo') ? 'seo' :
                     task.id.includes('performance') ? 'performance' :
@@ -860,10 +983,13 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     let messageDelay = 0
 
     // Message 0: Shining Text Summary (Shows first, then disappears)
+    const summaryContent = taskType === 'send-group-emails'
+      ? `I'm Orbin AI, your group email assistant. I'll help you define recipients, draft a base email, personalize per client, and send—all in one workspace.`
+      : `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`
     setTimeout(() => {
       addTypingMessage({
         type: 'summary',
-        content: `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`,
+        content: summaryContent,
         icon: RiBrainLine,
         statusIndicator: 'ORBIN_THINKING'
       })
@@ -904,6 +1030,24 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       }, messageDelay)
       
       return // Exit early for vacation flow - wait for user input
+    }
+
+    // Send-group-emails questions flow
+    if (taskType === 'send-group-emails') {
+      setTimeout(() => {
+        setIsAskingQuestion(true)
+        setCurrentQuestion('emailPurpose')
+        if (onQuestionStateChange) {
+          onQuestionStateChange(true)
+        }
+        addTypingMessage({
+          type: 'thinking',
+          content: "What is this email about? (e.g., feature launch update, pricing change, check-in after demo)",
+          icon: RiMailLine,
+          statusIndicator: 'ORBIN_THINKING'
+        })
+      }, messageDelay)
+      return
     }
 
     // Message 2: Analysis (for non-vacation tasks)
@@ -1406,15 +1550,29 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         </div>
       </div>
 
-      {/* Input Field - Always visible */}
-      <div className="p-4 border-t bg-white" style={{ borderColor: '#E5E7EB' }}>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
+      {/* Input Field - Multi-line textarea that grows upward */}
+      <div className="p-4 border-t bg-white flex-shrink-0" style={{ borderColor: '#E5E7EB' }}>
+        <style>{`
+          .chat-input-textarea::-webkit-scrollbar { width: 6px; }
+          .chat-input-textarea::-webkit-scrollbar-track { background: transparent; border-radius: 3px; }
+          .chat-input-textarea::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+          .chat-input-textarea::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+          .chat-input-textarea { scrollbar-width: thin; scrollbar-color: #D1D5DB transparent; }
+        `}</style>
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={(el) => { textareaRef.current = el }}
             value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            placeholder={isAskingQuestion ? "Type your answer here..." : "Type a message or ask a question..."}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none"
+            onChange={(e) => {
+              setUserInput(e.target.value)
+              const ta = e.target
+              ta.style.height = 'auto'
+              ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
+            }}
+            placeholder={isAskingQuestion ? "Type your answer here... (Enter for new line)" : "Type a message or ask a question... (Enter for new line)"}
+            rows={1}
+            className="chat-input-textarea flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none resize-none min-h-[40px] max-h-[160px]"
+            style={{ height: '40px' }}
             onFocus={(e) => {
               e.currentTarget.style.borderColor = 'black'
               e.currentTarget.style.boxShadow = '0 0 0 2px rgba(0, 0, 0, 0.2)'
@@ -1423,16 +1581,17 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
               e.currentTarget.style.borderColor = '#D1D5DB'
               e.currentTarget.style.boxShadow = 'none'
             }}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && userInput.trim()) {
-                handleUserAnswer()
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault()
+                if (userInput.trim()) handleUserAnswer()
               }
             }}
           />
           <button
             onClick={handleUserAnswer}
             disabled={!userInput.trim()}
-            className="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm font-medium"
+            className="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm font-medium flex-shrink-0"
           >
             Send
           </button>
@@ -1457,6 +1616,13 @@ const DEFAULT_TASKS: TaskCard[] = [
     subtitle: 'Plan a 7-day trip to Japan: find flights, book hotels, create an itinerary, reserve restaurants, and get travel insurance',
     icon: RiPlaneLine,
     iconBg: DARK_PALETTE.secondary
+  },
+  {
+    id: 'send-group-emails',
+    title: 'Send Group Emails',
+    subtitle: 'Send personalized emails to multiple clients: define recipients, draft a base email, personalize per client, review, and send',
+    icon: RiMailLine,
+    iconBg: DARK_PALETTE.tertiary
   }
 ]
 
@@ -1489,7 +1655,11 @@ export default function CanvasLanding() {
     { id: '5', title: 'Get travel insurance', status: 'pending' }
   ])
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<{id: string, title: string, status: 'pending' | 'in-progress' | 'completed', agent?: string, details?: any} | null>(null)
-  
+  const [emailFlowData, setEmailFlowData] = useState<{ purpose?: string, recipientCount?: string, rawRecipients?: string, tone?: string, commonContent?: string, ready?: boolean } | null>(null)
+  const [isAskingEmailQuestions, setIsAskingEmailQuestions] = useState(false)
+  const [sendEmailAuthorizedAt, setSendEmailAuthorizedAt] = useState<number>(0)
+  const [showSendEmailAuthModal, setShowSendEmailAuthModal] = useState(false)
+  const [pendingSendCount, setPendingSendCount] = useState(0)
 
   useEffect(() => {
     try {
@@ -1823,6 +1993,18 @@ export default function CanvasLanding() {
           status: 'ready'
         }))
       }
+    } else if (taskId === 'send-group-emails') {
+      if (!expandedCards.includes(taskId)) {
+        setExpandedCards(prev => [...prev, taskId])
+        setNotifications([])
+        setActiveAgent(prev => ({
+          ...prev,
+          name: 'Orbin AI',
+          statusText: 'Ready to send group emails',
+          subheading: 'Group Email Agent',
+          status: 'ready'
+        }))
+      }
     } else if (taskId === 'store-health' || taskId.startsWith('store-health-')) {
       if (!expandedCards.includes(taskId)) {
         setExpandedCards(prev => [...prev, taskId])
@@ -1973,7 +2155,8 @@ export default function CanvasLanding() {
             {taskCards.map((task) => {
               const iconMap: Record<string, React.ComponentType<{ size?: string | number }>> = {
                 'store-health': RiPulseLine,
-                'plan-vacation': RiPlaneLine
+                'plan-vacation': RiPlaneLine,
+                'send-group-emails': RiMailLine
               }
               const IconComponent = (task.icon || iconMap[task.id] || RiStarFill)
               return (
@@ -2793,19 +2976,83 @@ export default function CanvasLanding() {
               </div>
             ))}
 
+            {/* Send Group Emails Expandable Interface */}
+            {expandedCards.filter(cardId => cardId === 'send-group-emails' && !getProjectSection(cardId)).map(emailCardId => (
+              <div
+                key={emailCardId}
+                className={`transition-all duration-300 ${sectionMode ? 'cursor-pointer' : ''} ${selectedProjects.includes(emailCardId) ? 'border-2 border-dashed border-gray-600' : ''}`}
+                style={{ width: '1440px', minWidth: '1440px', flexShrink: 0, marginBottom: '50px' }}
+                onClick={() => handleProjectSelection(emailCardId)}
+              >
+                <div className="text-left mb-6 relative" style={{ marginTop: '120px' }}>
+                  <h1 className="text-3xl font-bold mb-2 text-gray-900">Send Group Emails</h1>
+                  <p className="text-lg text-gray-600">AI-powered group email workspace</p>
+                </div>
+                <div className="flex gap-6">
+                  <div
+                    className="flex-shrink-0 space-y-4 transition-all duration-300"
+                    style={{ width: isAskingEmailQuestions ? '600px' : (emailFlowData?.ready ? '320px' : '600px') }}
+                  >
+                    <div style={{ height: isAskingEmailQuestions ? '700px' : '500px' }}>
+                      <AIConversationCard
+                        taskCards={taskCards}
+                        expandedCards={[emailCardId]}
+                        scanProgress={scanProgress}
+                        isScanning={false}
+                        onAddNotification={addNotification}
+                        onQuestionStateChange={(isAsking) => setIsAskingEmailQuestions(isAsking)}
+                        onEmailDataUpdate={(data) => setEmailFlowData({ ...data, ready: data.ready !== false })}
+                      />
+                    </div>
+                  </div>
+                  <div
+                    className={`transition-all duration-300 ${emailFlowData?.ready ? 'flex-1' : 'flex-none'}`}
+                    style={{ width: emailFlowData?.ready ? 'auto' : '0px', overflow: emailFlowData?.ready ? 'visible' : 'hidden' }}
+                  >
+                    <div className="w-full mb-4">
+                      <NotificationBanner activeAgent={activeAgent} />
+                    </div>
+                    <div
+                      className="rounded-lg shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.95)',
+                        backdropFilter: 'blur(25px)',
+                        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.3)',
+                        minHeight: 'auto'
+                      }}
+                    >
+                      <div className="p-6">
+                        <SendGroupEmailsPage
+                          emailFlowData={emailFlowData || undefined}
+                          isReady={emailFlowData?.ready || false}
+                          onRequestSend={(count) => {
+                            setPendingSendCount(count)
+                            setShowSendEmailAuthModal(true)
+                          }}
+                          sendAuthorizedAt={sendEmailAuthorizedAt}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
             {/* Generic Task Expandable Interface - Only when NOT in section */}
             {taskCards.filter(task => 
               expandedCards.includes(task.id) && 
               task.id !== 'store-health' && 
               !task.id.startsWith('store-health-') &&
               task.id !== 'plan-vacation' &&
+              task.id !== 'send-group-emails' &&
               task.id !== 'seo-optimizer' && 
               !task.id.includes('seo') &&
               !getProjectSection(task.id)
             ).map(task => {
               const iconMap: Record<string, React.ComponentType<{ size?: string | number }>> = {
                 'store-health': RiPulseLine,
-                'plan-vacation': RiPlaneLine
+                'plan-vacation': RiPlaneLine,
+                'send-group-emails': RiMailLine
               }
               const TaskIcon = (task.icon || iconMap[task.id] || RiStarFill)
               return (
@@ -3689,6 +3936,51 @@ export default function CanvasLanding() {
           setShowPackagePreview(false)
         }}
       />
+
+      {/* Send Group Emails – Authorize & send modal (prototype) */}
+      {showSendEmailAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSendEmailAuthModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+                <RiMailLine size={24} className="text-gray-700" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Send group emails</h2>
+                <p className="text-sm text-gray-600">Ready to send {pendingSendCount} emails. Do you want to proceed?</p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSendEmailAuthModal(false)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSendEmailAuthModal(false)
+                  setSendEmailAuthorizedAt(Date.now())
+                  addNotification({
+                    type: 'info',
+                    title: 'Emails sending',
+                    message: `Authorization confirmed. Sending ${pendingSendCount} emails now…`,
+                    actionRequired: false,
+                    timestamp: Date.now(),
+                    taskId: 'send-group-emails'
+                  })
+                }}
+                className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black font-medium"
+              >
+                Authorize & send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
