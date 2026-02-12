@@ -137,9 +137,10 @@ interface AIConversationCardProps {
   onPlanMyWeekAgentChange?: (agentId: 'bookmyshow' | 'swiggy' | 'nexas') => void
   onPlanMyWeekModeChange?: (mode: 'week' | 'weekend') => void
   planMyWeekAgentLogos?: Record<string, string>
+  planMyWeekBookedTypes?: ('movie' | 'restaurant' | 'bowling')[]
 }
 
-function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed, genericFlowScript, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekAgentLogos }: AIConversationCardProps) {
+function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed, genericFlowScript, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekAgentLogos, planMyWeekBookedTypes }: AIConversationCardProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
     type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user' | 'findAgentTable'
@@ -776,21 +777,32 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
       }
       const dayMatch = text.match(/\b(saturday|sunday|monday|tuesday|wednesday|thursday|friday)\b/i)
       const timeMatch = text.match(/\b(\d{1,2}(:\d{2})?\s*(am|pm)?)\b/i)
+      const movieKeywords = /\b(movie|movies|film|ticket|tickets|cinema|show)\b/i
+      const restaurantKeywords = /\b(lunch|dinner|restaurant|eat|food|dining|dine|eat out|meal|brunch)\b/i
+      const bowlingKeywords = /\b(bowling|game|games|lanes|nexas)\b/i
       let type: 'movie' | 'restaurant' | 'bowling' = 'movie'
       let agentId: 'bookmyshow' | 'swiggy' | 'nexas' = 'bookmyshow'
-      if (/\b(movie|movies|film)\b/i.test(text)) {
+      if (movieKeywords.test(text)) {
         type = 'movie'
         agentId = 'bookmyshow'
-      } else if (/\b(lunch|dinner|restaurant|eat|food)\b/i.test(text)) {
+      } else if (restaurantKeywords.test(text)) {
         type = 'restaurant'
         agentId = 'swiggy'
-      } else if (/\b(bowling|game|games)\b/i.test(text)) {
+      } else if (bowlingKeywords.test(text)) {
         type = 'bowling'
         agentId = 'nexas'
+      }
+      const hasActivityKeyword = movieKeywords.test(text) || restaurantKeywords.test(text) || bowlingKeywords.test(text)
+      if (!hasActivityKeyword) {
+        setTimeout(() => {
+          addTypingMessage({ type: 'result', content: 'What would you like to book—movie, lunch/dinner, or bowling?', icon: RiCalendarLine })
+        }, 500)
+        return
       }
       const hasDay = !!dayMatch
       const hasTime = !!timeMatch
       if (!hasDay && !hasTime) {
+        onPlanMyWeekAgentChange?.(agentId)
         setTimeout(() => {
           addTypingMessage({ type: 'result', content: 'Which day and time? (e.g. lunch Sunday 1pm)', icon: RiCalendarLine })
         }, 500)
@@ -811,19 +823,30 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         })
       }, 500)
       setTimeout(() => {
-        const followUp =
-          agentId === 'bookmyshow'
-            ? 'Movie tickets done. Continuing to next task – restaurant booking?'
-            : agentId === 'swiggy'
-              ? 'Restaurant booking done. Continuing to next – bowling?'
-              : 'Bowling registration done. Your plan is set.'
+        const bookedAfterThis = [...new Set([...(planMyWeekBookedTypes || []), type])]
+        const restaurantAlreadyBooked = bookedAfterThis.includes('restaurant')
+        const bowlingAlreadyBooked = bookedAfterThis.includes('bowling')
+        let followUp: string
+        if (agentId === 'bookmyshow') {
+          followUp = restaurantAlreadyBooked
+            ? 'Your plan is set. Add more anytime or say \'done\'.'
+            : 'Movie tickets done. Continuing to next task – restaurant booking?'
+          if (!restaurantAlreadyBooked) setPlanMyWeekSuggestedNext('restaurant')
+          else setPlanMyWeekSuggestedNext(null)
+        } else if (agentId === 'swiggy') {
+          followUp = bowlingAlreadyBooked
+            ? 'Your plan is set. Add more anytime or say \'done\'.'
+            : 'Restaurant booking done. Continuing to next – bowling?'
+          if (!bowlingAlreadyBooked) setPlanMyWeekSuggestedNext('bowling')
+          else setPlanMyWeekSuggestedNext(null)
+        } else {
+          followUp = 'Bowling registration done. Your plan is set.'
+          setPlanMyWeekSuggestedNext(null)
+        }
         addTypingMessage({ type: 'result', content: followUp, icon: RiCheckLine })
-        if (agentId === 'bookmyshow') setPlanMyWeekSuggestedNext('restaurant')
-        else if (agentId === 'swiggy') setPlanMyWeekSuggestedNext('bowling')
-        else setPlanMyWeekSuggestedNext(null)
       }, 6500)
     }
-  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekSuggestedNext, planMyWeekAgentLogos])
+  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete, planMyWeekSuggestions, onPlanMyWeekBooking, onPlanMyWeekAgentChange, onPlanMyWeekModeChange, planMyWeekSuggestedNext, planMyWeekAgentLogos, planMyWeekBookedTypes])
 
   // Notify parent when question state changes
   useEffect(() => {
@@ -1197,7 +1220,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     const summaryContent = taskType === 'send-group-emails'
       ? `I'm Orbin AI, your group email assistant. I'll help you define recipients, draft a base email, personalize per client, and send—all in one workspace.`
       : taskType === 'plan-my-week'
-        ? `I'm Orbin AI, your week planning assistant. I'll help you plan movies, dining, and bowling—just tell me week or weekend and what you'd like to do.`
+        ? `I can help you plan your week—movies, dining, bowling.`
         : taskType === 'default'
         ? `I'm Orbin AI, your assistant for ${task.title}. I'll ask a few questions to get started.`
         : `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`
@@ -1216,16 +1239,18 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     }, messageDelay)
     messageDelay += 3000 // Fast transition to summary
 
-    // Message 1: Quick Introduction
-    setTimeout(() => {
-      addTypingMessage({
-        type: 'thinking',
-        content: `${greetings[taskType]}`,
-        icon: RiBrainLine,
-        statusIndicator: 'ORBIN_THINKING'
-      })
-    }, messageDelay)
-    messageDelay += 6000 // Increased for status indicator
+    // Message 1: Quick Introduction (skipped for plan-my-week so first substantive message is the question)
+    if (taskType !== 'plan-my-week') {
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'thinking',
+          content: `${greetings[taskType]}`,
+          icon: RiBrainLine,
+          statusIndicator: 'ORBIN_THINKING'
+        })
+      }, messageDelay)
+      messageDelay += 6000 // Increased for status indicator
+    }
 
     // Vacation-specific questions flow
     if (taskType === 'plan-vacation') {
@@ -3510,6 +3535,7 @@ export default function CanvasLanding() {
                           }, 6000)
                         }}
                         planMyWeekAgentLogos={{ bookmyshow: bookmyshowLogo, swiggy: swiggyLogo, nexas: nexasLogo }}
+                        planMyWeekBookedTypes={Array.from(new Set(planMyWeekData.days.flatMap(d => d.events.map(e => e.type))))}
                       />
                     </div>
                     <div
