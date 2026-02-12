@@ -41,6 +41,7 @@ import NotificationBanner from './NotificationBanner'
 import SecureAuthorizationModal from './SecureAuthorizationModal'
 import BookingDetailsView from './BookingDetailsView'
 import findAgentLogo from '../assets/find agent.png'
+import genericTaskFlowData from '../data/genericTaskFlow.json'
 
 // Global window interface extension
 declare global {
@@ -118,9 +119,11 @@ interface AIConversationCardProps {
   onApplyFindAgentResults?: (rows: { name: string; company: string; email: string }[]) => void
   injectedEmailRecipients?: string | null
   onInjectedRecipientsConsumed?: () => void
+  genericFlowScript?: { welcomeMessage: string; questions: { id: string; text: string }[] }
+  onGenericFlowComplete?: (taskId: string) => void
 }
 
-function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed }: AIConversationCardProps) {
+function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning, onAutoEnterUrl, onAutoStartScan, onAddNotification, onVacationDataUpdate, onQuestionStateChange, onPackageSelect, onSubtaskComplete, onStartBooking, onEmailDataUpdate, showUseFindAgentOption, onEmailFlowQuestionChange, onUseFindAgent, findAgentResult, onApplyFindAgentResults, injectedEmailRecipients, onInjectedRecipientsConsumed, genericFlowScript, onGenericFlowComplete }: AIConversationCardProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
     type: 'thinking' | 'planning' | 'executing' | 'result' | 'error' | 'summary' | 'user' | 'findAgentTable'
@@ -482,7 +485,38 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     })
 
     let updatedAnswers = { ...questionAnswers, [currentQuestion]: answer }
+    setQuestionAnswers(updatedAnswers)
     setUserInput('')
+
+    // Generic (custom) task flow – 5 questions then show right panel
+    if (genericFlowScript && currentTask && genericFlowScript.questions.some(q => q.id === currentQuestion)) {
+      const idx = genericFlowScript.questions.findIndex(q => q.id === currentQuestion)
+      if (idx < 0) return
+      if (idx < genericFlowScript.questions.length - 1) {
+        const nextQuestion = genericFlowScript.questions[idx + 1]
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'result',
+            content: nextQuestion.text,
+            icon: RiBrainLine
+          })
+          setTimeout(() => setCurrentQuestion(nextQuestion.id), 2000)
+        }, 500)
+      } else {
+        setTimeout(() => {
+          addTypingMessage({
+            type: 'result',
+            content: "Thanks! Taking you to your workspace…",
+            icon: RiCheckLine
+          })
+          setIsAskingQuestion(false)
+          setCurrentQuestion(null)
+          if (onQuestionStateChange) onQuestionStateChange(false)
+          if (onGenericFlowComplete && currentTask) onGenericFlowComplete(currentTask.id)
+        }, 500)
+      }
+      return
+    }
 
     // Handle based on current question
     if (currentQuestion === 'destination') {
@@ -676,7 +710,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }, 3000)
       }, 500)
     }
-  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate])
+  }, [userInput, currentQuestion, questionAnswers, addTypingMessage, onVacationDataUpdate, onQuestionStateChange, onSubtaskComplete, onEmailDataUpdate, genericFlowScript, currentTask, onGenericFlowComplete])
 
   // Notify parent when question state changes
   useEffect(() => {
@@ -1047,7 +1081,9 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
     // Message 0: Shining Text Summary (Shows first, then disappears)
     const summaryContent = taskType === 'send-group-emails'
       ? `I'm Orbin AI, your group email assistant. I'll help you define recipients, draft a base email, personalize per client, and send—all in one workspace.`
-      : `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`
+      : taskType === 'default'
+        ? `I'm Orbin AI, your assistant for ${task.title}. I'll ask a few questions to get started.`
+        : `I'm Orbin AI, your intelligent agent for ${task.title}. I'll analyze your store comprehensively, identify optimization opportunities, and provide actionable recommendations. My process involves entering your store URL, running a detailed diagnostic scan, and generating a complete optimization report with specific fixes you can deploy instantly.`
     setTimeout(() => {
       addTypingMessage({
         type: 'summary',
@@ -1108,6 +1144,33 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
           icon: RiMailLine,
           statusIndicator: 'ORBIN_THINKING'
         })
+      }, messageDelay)
+      return
+    }
+
+    // Generic (custom) task flow – welcome + 5 questions from JSON
+    if (taskType === 'default' && genericFlowScript && genericFlowScript.questions.length >= 5) {
+      const welcome = genericFlowScript.welcomeMessage
+        .replace(/\{\{taskTitle\}\}/g, task.title)
+        .replace(/\{\{taskDescription\}\}/g, task.subtitle || '')
+      setTimeout(() => {
+        addTypingMessage({
+          type: 'thinking',
+          content: welcome,
+          icon: RiBrainLine,
+          statusIndicator: 'ORBIN_THINKING'
+        })
+        setTimeout(() => {
+          setIsAskingQuestion(true)
+          setCurrentQuestion(genericFlowScript.questions[0].id)
+          if (onQuestionStateChange) onQuestionStateChange(true)
+          addTypingMessage({
+            type: 'thinking',
+            content: genericFlowScript.questions[0].text,
+            icon: RiBrainLine,
+            statusIndicator: 'ORBIN_THINKING'
+          })
+        }, 2500)
       }, messageDelay)
       return
     }
@@ -1190,7 +1253,7 @@ function AIConversationCard({ taskCards, expandedCards, scanProgress, isScanning
         }))
       }, 4000) // Wait for status + typing to complete
     }, messageDelay)
-  }, [addTypingMessage, onAutoEnterUrl, onAutoStartScan, onVacationDataUpdate])
+  }, [addTypingMessage, onAutoEnterUrl, onAutoStartScan, onVacationDataUpdate, genericFlowScript, onQuestionStateChange, onGenericFlowComplete])
 
   const [scanningMessageShown, setScanningMessageShown] = useState(false)
   const [completionMessageShown, setCompletionMessageShown] = useState(false)
@@ -1772,6 +1835,9 @@ export default function CanvasLanding() {
   const [findAgentResult, setFindAgentResult] = useState<{ status: 'fetching' | 'done'; rows?: { name: string; company: string; email: string }[] } | null>(null)
   const [injectedEmailRecipients, setInjectedEmailRecipients] = useState<string | null>(null)
   const findAgentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [customTaskRightPanelReady, setCustomTaskRightPanelReady] = useState<Record<string, boolean>>({})
+
+  const genericFlowScript = genericTaskFlowData as { welcomeMessage: string; questions: { id: string; text: string }[] }
 
   const handleUseFindAgent = useCallback(() => {
     setFindAgentActive(true)
@@ -2634,8 +2700,8 @@ export default function CanvasLanding() {
 
 
 
-          {/* Projects Container - Full Canvas Layout */}
-          <div className="mt-26 w-full flex flex-wrap gap-12 justify-center" style={{ minWidth: '100vw', padding: '0 2rem', marginBottom: '50px' }}>
+          {/* Projects Container - Full Canvas Layout (32px below task cards) */}
+          <div className="w-full flex flex-wrap gap-12 justify-center" style={{ minWidth: '100vw', padding: '0 2rem', marginTop: '32px', marginBottom: '50px' }}>
 
             {/* Store Health Check Expandable Interfaces - Only when NOT in section */}
             {expandedCards.filter(cardId => (cardId === 'store-health' || cardId.startsWith('store-health-')) && !getProjectSection(cardId)).map(storeHealthId => (
@@ -2655,7 +2721,7 @@ export default function CanvasLanding() {
                 onClick={() => handleProjectSelection(storeHealthId)}
               >
               {/* Main Heading */}
-              <div className="text-left mb-6 relative" style={{ marginTop: '120px' }}>
+              <div className="text-left mb-6 relative">
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="text-3xl font-bold mb-2 text-gray-900">
@@ -2851,7 +2917,7 @@ export default function CanvasLanding() {
                 onClick={() => handleProjectSelection(vacationId)}
               >
                 {/* Main Heading */}
-                <div className="text-left mb-6 relative" style={{ marginTop: '120px' }}>
+                <div className="text-left mb-6 relative">
                   <div className="flex items-center justify-between">
                     <div>
                       <h1 className="text-3xl font-bold mb-2 text-gray-900">
@@ -3148,7 +3214,7 @@ export default function CanvasLanding() {
                 style={{ width: '1440px', minWidth: '1440px', flexShrink: 0, marginBottom: '50px' }}
                 onClick={() => handleProjectSelection(emailCardId)}
               >
-                <div className="text-left mb-6 relative" style={{ marginTop: '120px' }}>
+                <div className="text-left mb-6 relative">
                   <h1 className="text-3xl font-bold mb-2 text-gray-900">Send Group Emails</h1>
                   <p className="text-lg text-gray-600">AI-powered group email workspace</p>
                 </div>
@@ -3209,7 +3275,7 @@ export default function CanvasLanding() {
               </div>
             ))}
 
-            {/* Generic Task Expandable Interface - Only when NOT in section */}
+            {/* Generic Task Expandable Interface - Chat first, then right panel after 5 Q&As */}
             {taskCards.filter(task => 
               expandedCards.includes(task.id) && 
               task.id !== 'store-health' && 
@@ -3226,6 +3292,7 @@ export default function CanvasLanding() {
                 'send-group-emails': RiMailLine
               }
               const TaskIcon = (task.icon || iconMap[task.id] || RiStarFill)
+              const rightPanelReady = customTaskRightPanelReady[task.id]
               return (
               <div 
                 key={task.id}
@@ -3237,7 +3304,8 @@ export default function CanvasLanding() {
                 style={{ 
                   width: '1440px',
                   minWidth: '1440px',
-                  flexShrink: 0
+                  flexShrink: 0,
+                  marginBottom: '50px'
                 }}
                 onClick={() => handleProjectSelection(task.id)}
               >
@@ -3252,75 +3320,94 @@ export default function CanvasLanding() {
                         {task.subtitle}
                       </p>
                     </div>
-
                   </div>
                 </div>
-                
-                
 
-                {/* Two Section Layout */}
-                <div 
-                  className="rounded-3xl shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden"
-                  style={{ 
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    backdropFilter: 'blur(25px)',
-                    boxShadow: `
-                      0 12px 40px rgba(0, 0, 0, 0.15),
-                      inset 0 1px 0 rgba(255, 255, 255, 0.6),
-                      inset 0 -1px 0 rgba(255, 255, 255, 0.3)
-                    `
-                  }}
-                >
-                  <div className="p-6">
-                    {/* Full Width Section - Main Interface (100%) */}
-                    <div 
-                      className="w-full rounded-3xl p-8"
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.8)',
-                        minHeight: 'auto'
-                      }}
-                    >
-                      <div className="flex items-center gap-4 mb-8">
-                        <div 
-                          className="w-12 h-12 rounded-xl flex items-center justify-center text-white"
-                          style={{ backgroundColor: task.iconBg }}
-                        >
-                          <TaskIcon size={24} />
-                        </div>
-                        <div>
-                          <h2 className="text-2xl font-bold text-gray-900">{task.title}</h2>
-                          <p className="text-gray-600">{task.subtitle}</p>
-                        </div>
-                      </div>
+                {/* Two-column: Chat (left), Right panel after 5 Q&As */}
+                <div className="flex gap-6">
+                  {/* AI Conversation Card - Left */}
+                  <div 
+                    className="flex-shrink-0 space-y-4 transition-all duration-300"
+                    style={{ width: rightPanelReady ? '320px' : '600px' }}
+                  >
+                    <div style={{ height: rightPanelReady ? '500px' : '700px' }}>
+                      <AIConversationCard
+                        taskCards={taskCards}
+                        expandedCards={[task.id]}
+                        scanProgress={scanProgress}
+                        isScanning={false}
+                        onAddNotification={addNotification}
+                        genericFlowScript={genericFlowScript}
+                        onGenericFlowComplete={(taskId) => setCustomTaskRightPanelReady(prev => ({ ...prev, [taskId]: true }))}
+                      />
+                    </div>
+                  </div>
 
-                      {/* Coming Soon Content for other tasks */}
-                      <div className="text-center py-12">
-                        <div 
-                          className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center"
-                          style={{ color: task.iconBg }}
-                        >
-                          <TaskIcon size={32} />
+                  {/* Right panel - Coming Soon (visible after 5 Q&As) */}
+                  <div
+                    className={`transition-all duration-300 ${rightPanelReady ? 'flex-1' : 'flex-none'}`}
+                    style={{ width: rightPanelReady ? 'auto' : '0px', overflow: rightPanelReady ? 'visible' : 'hidden' }}
+                  >
+                    {rightPanelReady && (
+                      <>
+                        <div className="w-full mb-4">
+                          <NotificationBanner activeAgent={activeAgent} />
                         </div>
-                        <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                          {task.title} Interface Coming Soon
-                        </h3>
-                        <p className="text-gray-600 mb-6">
-                          We're building an amazing AI-powered interface for {task.title.toLowerCase()}. 
-                          Stay tuned for updates!
-                        </p>
-                        <div className="space-y-4">
-                          <div className="p-4 bg-gray-50 rounded-lg text-left">
-                            <h4 className="font-medium text-gray-800 mb-2">Planned Features:</h4>
-                            <ul className="text-sm text-gray-600 space-y-1">
-                              <li>• AI-powered automation</li>
-                              <li>• Real-time analytics</li>
-                              <li>• Smart recommendations</li>
-                              <li>• Custom workflows</li>
-                            </ul>
+                        <div
+                          className="rounded-3xl shadow-2xl border border-white/40 backdrop-blur-xl overflow-hidden"
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            backdropFilter: 'blur(25px)',
+                            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.3)'
+                          }}
+                        >
+                          <div className="p-6">
+                            <div
+                              className="w-full rounded-3xl p-8"
+                              style={{ background: 'rgba(255, 255, 255, 0.8)', minHeight: 'auto' }}
+                            >
+                              <div className="flex items-center gap-4 mb-8">
+                                <div
+                                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white"
+                                  style={{ backgroundColor: task.iconBg }}
+                                >
+                                  <TaskIcon size={24} />
+                                </div>
+                                <div>
+                                  <h2 className="text-2xl font-bold text-gray-900">{task.title}</h2>
+                                  <p className="text-gray-600">{task.subtitle}</p>
+                                </div>
+                              </div>
+                              <div className="text-center py-12">
+                                <div
+                                  className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center"
+                                  style={{ color: task.iconBg }}
+                                >
+                                  <TaskIcon size={32} />
+                                </div>
+                                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                                  {task.title} Interface Coming Soon
+                                </h3>
+                                <p className="text-gray-600 mb-6">
+                                  We're building an amazing AI-powered interface for {task.title.toLowerCase()}. Stay tuned for updates!
+                                </p>
+                                <div className="space-y-4">
+                                  <div className="p-4 bg-gray-50 rounded-lg text-left">
+                                    <h4 className="font-medium text-gray-800 mb-2">Planned Features:</h4>
+                                    <ul className="text-sm text-gray-600 space-y-1">
+                                      <li>• AI-powered automation</li>
+                                      <li>• Real-time analytics</li>
+                                      <li>• Smart recommendations</li>
+                                      <li>• Custom workflows</li>
+                                    </ul>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3680,7 +3767,7 @@ export default function CanvasLanding() {
                   value={newTaskName}
                   onChange={(e) => setNewTaskName(e.target.value)}
                   placeholder="e.g., Plan My Vacation"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && newTaskName.trim()) {
                       handleCreateTask()
@@ -3697,7 +3784,7 @@ export default function CanvasLanding() {
                   onChange={(e) => setNewTaskDesc(e.target.value)}
                   placeholder="Describe what you want to accomplish..."
                   rows={4}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none"
                 />
               </div>
 
@@ -3711,7 +3798,7 @@ export default function CanvasLanding() {
                 <button
                   onClick={handleCreateTask}
                   disabled={!newTaskName.trim()}
-                  className="px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors font-medium shadow-lg hover:shadow-xl disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="px-6 py-2.5 rounded-lg bg-gray-900 hover:bg-black text-white transition-colors font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Create Task
                 </button>

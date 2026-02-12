@@ -1,0 +1,10 @@
+{
+  "welcomeMessage": "I'll help you with {{taskTitle}}. Let me ask a few questions so I can tailor the experience.",
+  "questions": [
+    { "id": "generic_q1", "text": "What's the main goal or outcome you want from this?" },
+    { "id": "generic_q2", "text": "When do you need this by, or what's your timeline?" },
+    { "id": "generic_q3", "text": "Any constraints or requirements I should know about?" },
+    { "id": "generic_q4", "text": "Who else is involved, if anyone (e.g. team, client)?" },
+    { "id": "generic_q5", "text": "Anything else that would help me assist you better?" }
+  ]
+}
